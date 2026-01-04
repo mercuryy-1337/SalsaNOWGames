@@ -260,7 +260,12 @@ namespace SalsaNOWGames.ViewModels
                 IsLoggedIn = true;
                 SteamUsername = savedSession.Username ?? "Steam User";
                 AvatarUrl = savedSession.AvatarUrl;
+                
+                // Restore password from session
+                _steamPassword = savedSession.GetPassword();
+                
                 CurrentView = "library";
+                StatusMessage = $"Welcome back, {SteamUsername}!";
                 _ = RefreshInstalledGamesAsync();
                 return;
             }
@@ -295,12 +300,15 @@ namespace SalsaNOWGames.ViewModels
                     // Store password for downloads
                     _steamPassword = loginWindow.Password;
                     
-                    // Create session
+                    // Create session with encrypted password
                     CurrentSession = loginWindow.Session ?? new SteamSession
                     {
                         Username = loginWindow.Username,
-                        ExpiresAt = DateTime.UtcNow.AddDays(30)
+                        ExpiresAt = DateTime.UtcNow.AddDays(365) // 1 year expiry
                     };
+                    
+                    // Store encrypted password in session for persistence
+                    CurrentSession.SetPassword(loginWindow.Password);
                     
                     // Save session for future use
                     _steamAuthService.SaveSession(CurrentSession);

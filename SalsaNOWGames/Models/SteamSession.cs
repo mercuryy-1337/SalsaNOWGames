@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.Serialization;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SalsaNOWGames.Models
 {
@@ -30,9 +32,37 @@ namespace SalsaNOWGames.Models
         [DataMember]
         public string RefreshToken { get; set; }
 
-        public bool IsValid => !string.IsNullOrEmpty(SteamLoginSecure) && 
-                               !string.IsNullOrEmpty(SteamId) &&
-                               ExpiresAt > DateTime.Now;
+        // Store encrypted password for session persistence
+        [DataMember]
+        public string EncryptedPassword { get; set; }
+
+        // Session is valid if we have username and either password or it hasn't expired
+        public bool IsValid => !string.IsNullOrEmpty(Username) && 
+                               (!string.IsNullOrEmpty(EncryptedPassword) || ExpiresAt > DateTime.Now);
+
+        public void SetPassword(string password)
+        {
+            if (string.IsNullOrEmpty(password)) return;
+            try
+            {
+                byte[] data = Encoding.UTF8.GetBytes(password);
+                byte[] encrypted = ProtectedData.Protect(data, null, DataProtectionScope.CurrentUser);
+                EncryptedPassword = Convert.ToBase64String(encrypted);
+            }
+            catch { }
+        }
+
+        public string GetPassword()
+        {
+            if (string.IsNullOrEmpty(EncryptedPassword)) return null;
+            try
+            {
+                byte[] encrypted = Convert.FromBase64String(EncryptedPassword);
+                byte[] data = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(data);
+            }
+            catch { return null; }
+        }
 
         public string GetDepotDownloaderArgs()
         {

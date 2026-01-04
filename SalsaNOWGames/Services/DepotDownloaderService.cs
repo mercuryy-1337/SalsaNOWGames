@@ -19,6 +19,7 @@ namespace SalsaNOWGames.Services
         private Process _currentProcess;
         private CancellationTokenSource _cancellationTokenSource;
         private StreamWriter _logWriter;
+        private string _currentDownloadAppId;
 
         public event Action<string> OnOutputReceived;
         public event Action<double> OnProgressChanged;
@@ -116,12 +117,14 @@ namespace SalsaNOWGames.Services
                 // Create steam_appid.txt
                 File.WriteAllText(Path.Combine(gameDirectory, "steam_appid.txt"), appId);
 
+                // Track current download for cleanup on cancel
+                _currentDownloadAppId = appId;
                 _cancellationTokenSource = new CancellationTokenSource();
 
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = _depotDownloaderPath,
-                    Arguments = $"-app \"{appId}\" -username \"{username}\" -password \"{password}\" -os windows -dir \"{gameDirectory}\"",
+                    Arguments = $"-app \"{appId}\" -username \"{username}\" -password \"{password}\" -remember-password -os windows -dir \"{gameDirectory}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -170,11 +173,16 @@ namespace SalsaNOWGames.Services
                 OnDownloadComplete?.Invoke(success, success ? "Download complete!" : "Download failed.");
                 
                 _currentProcess = null;
+                if (success)
+                {
+                    _currentDownloadAppId = null; // Clear on success, keep for cleanup on failure
+                }
                 return success;
             }
             catch (OperationCanceledException)
             {
                 LogToFile("Download cancelled by user.");
+                // Don't clear _currentDownloadAppId here - CancelDownload will handle cleanup
                 OnDownloadComplete?.Invoke(false, "Download cancelled.");
                 return false;
             }
@@ -233,6 +241,8 @@ namespace SalsaNOWGames.Services
                 // Create steam_appid.txt
                 File.WriteAllText(Path.Combine(gameDirectory, "steam_appid.txt"), appId);
 
+                // Track current download for cleanup on cancel
+                _currentDownloadAppId = appId;
                 _cancellationTokenSource = new CancellationTokenSource();
 
                 // Use -remember-password to use saved credentials from ~/.DepotDownloader/
@@ -290,6 +300,7 @@ namespace SalsaNOWGames.Services
 
         public void CancelDownload()
         {
+            string appIdToClean = _currentDownloadAppId;
             try
             {
                 _cancellationTokenSource?.Cancel();
@@ -300,6 +311,26 @@ namespace SalsaNOWGames.Services
                 }
             }
             catch { }
+
+            // Clean up partial download files
+            if (!string.IsNullOrEmpty(appIdToClean))
+            {
+                try
+                {
+                    string gameDirectory = Path.Combine(_gamesDirectory, appIdToClean);
+                    if (Directory.Exists(gameDirectory))
+                    {
+                        LogToFile($"Cleaning up cancelled download: {gameDirectory}");
+                        Directory.Delete(gameDirectory, true);
+                        LogToFile($"Successfully deleted partial download for AppID: {appIdToClean}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogToFile($"Failed to clean up partial download: {ex.Message}");
+                }
+            }
+            _currentDownloadAppId = null;
         }
 
         private void ParseProgress(string output)
