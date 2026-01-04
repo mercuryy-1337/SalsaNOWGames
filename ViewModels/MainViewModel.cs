@@ -279,13 +279,24 @@ namespace SalsaNOWGames.ViewModels
             var savedSession = _steamAuthService.LoadSession();
             if (savedSession != null && savedSession.IsValid)
             {
+                // Try to restore password from session
+                string restoredPassword = savedSession.GetPassword();
+                
+                // If password can't be decrypted (e.g., new VM, different user profile),
+                // clear the session and force re-login
+                if (string.IsNullOrEmpty(restoredPassword))
+                {
+                    _steamAuthService.ClearSession();
+                    _settingsService.ClearLogin();
+                    LoginError = "Session expired. Please sign in again.";
+                    return;
+                }
+                
                 CurrentSession = savedSession;
                 IsLoggedIn = true;
                 SteamUsername = savedSession.Username ?? "Steam User";
                 AvatarUrl = savedSession.AvatarUrl;
-                
-                // Restore password from session
-                _steamPassword = savedSession.GetPassword();
+                _steamPassword = restoredPassword;
                 
                 CurrentView = "library";
                 StatusMessage = $"Welcome back, {SteamUsername}!";
