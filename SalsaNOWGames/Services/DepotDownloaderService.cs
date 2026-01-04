@@ -166,7 +166,14 @@ namespace SalsaNOWGames.Services
                 _currentProcess.BeginErrorReadLine();
 
                 LogToFile("Process started, waiting for completion...");
-                await Task.Run(() => _currentProcess.WaitForExit(), _cancellationTokenSource.Token);
+                await Task.Run(() => _currentProcess?.WaitForExit(), _cancellationTokenSource.Token);
+
+                // Check if process was cancelled/killed
+                if (_currentProcess == null)
+                {
+                    LogToFile("Download was cancelled.");
+                    return false;
+                }
 
                 bool success = _currentProcess.ExitCode == 0;
                 LogToFile($"Download finished. Exit code: {_currentProcess.ExitCode}, Success: {success}");
@@ -188,6 +195,12 @@ namespace SalsaNOWGames.Services
             }
             catch (Exception ex)
             {
+                // Ignore null reference errors from cancelled downloads
+                if (_currentProcess == null)
+                {
+                    LogToFile("Download was cancelled.");
+                    return false;
+                }
                 LogToFile($"Error during download: {ex.Message}");
                 OnOutputReceived?.Invoke($"Error: {ex.Message}");
                 OnDownloadComplete?.Invoke(false, ex.Message);
