@@ -395,6 +395,7 @@
                                                 <Button Style="{StaticResource ModernButton}"
                                                         Command="{Binding DataContext.DownloadGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsInstalled, Converter={StaticResource InverseBool}}"
                                                         Padding="12,8"
                                                         FontSize="12"
                                                         HorizontalAlignment="Left">
@@ -550,9 +551,22 @@
             
             <!-- Status Bar -->
             <Border Grid.Row="2" Background="{StaticResource PrimaryBrush}" Padding="20,10">
-                <TextBlock Text="{Binding StatusMessage}" 
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           FontSize="13"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13"
+                               Grid.Column="0"/>
+                    
+                    <TextBlock Text="{Binding DriveUsage}" 
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13"
+                               Grid.Column="1"/>
+                </Grid>
             </Border>
         </Grid>
     </Grid>

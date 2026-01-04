@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using SalsaNOWGames.Models;
 using SalsaNOWGames.Services;
 using SalsaNOWGames.Views;
@@ -40,6 +41,8 @@ namespace SalsaNOWGames.ViewModels
 
         // View state
         private string _currentView; // "login", "library", "download", "search"
+        private DispatcherTimer _statusClearTimer;
+        private string _driveUsage;
 
         public MainViewModel()
         {
@@ -53,6 +56,14 @@ namespace SalsaNOWGames.ViewModels
             _searchResults = new ObservableCollection<GameInfo>();
             _currentView = "login";
 
+            // Initialize status clear timer (clears after 5 seconds)
+            _statusClearTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _statusClearTimer.Tick += (s, e) =>
+            {
+                _statusClearTimer.Stop();
+                UpdateDefaultStatus();
+            };
+
             // Initialize commands
             LoginCommand = new RelayCommand(async () => await LoginAsync(), () => !IsLoggingIn);
             LogoutCommand = new RelayCommand(Logout);
@@ -63,7 +74,7 @@ namespace SalsaNOWGames.ViewModels
             OpenFolderCommand = new RelayCommand(OpenGameFolder);
             CancelDownloadCommand = new RelayCommand(CancelDownload, () => IsDownloading);
             ShowLibraryCommand = new RelayCommand(() => CurrentView = "library");
-            ShowSearchCommand = new RelayCommand(() => CurrentView = "search");
+            ShowSearchCommand = new RelayCommand(async () => await ShowSearchViewAsync());
             ShowDownloadCommand = new RelayCommand(() => CurrentView = "download");
             RefreshLibraryCommand = new RelayCommand(async () => await RefreshInstalledGamesAsync());
 
@@ -229,6 +240,12 @@ namespace SalsaNOWGames.ViewModels
             set => SetProperty(ref _statusMessage, value);
         }
 
+        public string DriveUsage
+        {
+            get => _driveUsage;
+            set => SetProperty(ref _driveUsage, value);
+        }
+
         public string CurrentView
         {
             get => _currentView;
@@ -389,11 +406,25 @@ namespace SalsaNOWGames.ViewModels
                 InstalledGames.Add(gameInfo);
             }
 
-            // Update count from games.json
-            int totalGames = _gamesLibraryService.Games.Count;
-            int installedCount = _gamesLibraryService.GetInstalledGames().Count;
-            StatusMessage = $"{installedCount} installed, {totalGames} game(s) in library";
+            // Update count from games.json and drive usage
+            UpdateDefaultStatus();
+            UpdateDriveUsage();
             await Task.CompletedTask;
+        }
+
+        /*
+         * Switch to search view and reload search results if there's a query
+         * This ensures games.json is rescanned for installed status
+         */
+        private async Task ShowSearchViewAsync()
+        {
+            CurrentView = "search";
+            
+            // If there's a search query, reload the search to refresh installed status
+            if (!string.IsNullOrWhiteSpace(SearchQuery) && SearchResults.Count > 0)
+            {
+                await SearchGamesAsync();
+            }
         }
 
         private async Task SearchGamesAsync()
@@ -412,12 +443,12 @@ namespace SalsaNOWGames.ViewModels
                 var results = await _steamApiService.SearchGamesAsync(SearchQuery);
                 foreach (var game in results)
                 {
-                    // Check if already installed
-                    game.IsInstalled = _depotDownloaderService.IsGameInstalled(game.AppId);
+                    // Check if installed using games.json (more accurate than folder check)
+                    game.IsInstalled = _gamesLibraryService.IsGameInstalled(game.AppId);
                     SearchResults.Add(game);
                 }
 
-                StatusMessage = $"Found {results.Count} game(s)";
+                ShowTemporaryStatus($"Found {results.Count} game(s)");
             }
             catch (Exception ex)
             {
@@ -496,13 +527,51 @@ namespace SalsaNOWGames.ViewModels
                         // Update the game in the list instead of removing
                         game.IsInstalled = false;
                         game.SizeOnDisk = 0;
-                        StatusMessage = $"{game.Name} has been deleted.";
+                        
+                        // Also update in search results if present
+                        var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
+                        if (searchGame != null)
+                        {
+                            searchGame.IsInstalled = false;
+                        }
+                        
+                        ShowTemporaryStatus($"{game.Name} has been deleted.");
+                        UpdateDriveUsage();
                     }
                     else
                     {
-                        StatusMessage = "Failed to delete game.";
+                        ShowTemporaryStatus("Failed to delete game.");
                     }
                 }
+            }
+        }
+
+        private void ShowTemporaryStatus(string message)
+        {
+            StatusMessage = message;
+            _statusClearTimer.Stop();
+            _statusClearTimer.Start();
+        }
+
+        private void UpdateDefaultStatus()
+        {
+            int totalGames = _gamesLibraryService.Games.Count;
+            int installedCount = _gamesLibraryService.GetInstalledGames().Count;
+            StatusMessage = $"{installedCount} installed, {totalGames} game(s) in library";
+        }
+
+        private void UpdateDriveUsage()
+        {
+            try
+            {
+                var driveInfo = new DriveInfo("I");
+                double freeGB = driveInfo.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                double totalGB = driveInfo.TotalSize / (1024.0 * 1024.0 * 1024.0);
+                DriveUsage = $"⛃ {freeGB:F1} GB free of {totalGB:F1} GB";
+            }
+            catch
+            {
+                DriveUsage = "Drive info unavailable";
             }
         }
 
