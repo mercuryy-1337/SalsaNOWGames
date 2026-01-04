@@ -276,21 +276,23 @@
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            Margin="0,4,0,10"/>
                                                 
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Button Content="📂 Open" 
-                                                            Style="{StaticResource SecondaryButton}"
-                                                            Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}"
-                                                            Padding="12,6"
-                                                            FontSize="12"/>
-                                                    <Button Content="🗑️ Delete" 
-                                                            Style="{StaticResource DangerButton}"
-                                                            Command="{Binding DataContext.DeleteGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}"
-                                                            Padding="12,6"
-                                                            FontSize="12"
-                                                            Margin="8,0,0,0"/>
-                                                </StackPanel>
+                                                <!-- Delete Button (shown when installed) -->
+                                                <Button Style="{StaticResource DangerButton}"
+                                                        Command="{Binding DataContext.DeleteGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Padding="12,6"
+                                                        FontSize="12"
+                                                        Content="🗑️ Delete"
+                                                        Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}}"/>
+                                                
+                                                <!-- Download Button (shown when not installed) -->
+                                                <Button Style="{StaticResource ModernButton}"
+                                                        Command="{Binding DataContext.DownloadGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Padding="12,6"
+                                                        FontSize="12"
+                                                        Content="⬇️ Download"
+                                                        Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}"/>
                                             </StackPanel>
                                         </Grid>
                                     </Border>

@@ -359,11 +359,11 @@ namespace SalsaNOWGames.ViewModels
         {
             InstalledGames.Clear();
 
-            // Load games from games.json
+            // Load ALL games from games.json (both installed and uninstalled)
             _gamesLibraryService.LoadGames();
-            var installedGames = _gamesLibraryService.GetInstalledGames();
+            var allGames = _gamesLibraryService.Games;
 
-            foreach (var game in installedGames)
+            foreach (var game in allGames)
             {
                 var gameInfo = new GameInfo
                 {
@@ -374,22 +374,25 @@ namespace SalsaNOWGames.ViewModels
                     IsInstalled = game.IsInstalled
                 };
                 
-                // Get size on disk if the game folder exists
-                if (!string.IsNullOrEmpty(game.InstallPath) && Directory.Exists(game.InstallPath))
+                // Get size on disk if the game folder exists and is installed
+                if (game.IsInstalled && !string.IsNullOrEmpty(game.InstallPath) && Directory.Exists(game.InstallPath))
                 {
                     gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(game.Id);
-                    InstalledGames.Add(gameInfo);
                 }
-                else
+                else if (game.IsInstalled)
                 {
-                    // Game folder doesn't exist, mark as not installed
+                    // Game was marked installed but folder doesn't exist, mark as not installed
                     _gamesLibraryService.MarkAsUninstalled(game.Id);
+                    gameInfo.IsInstalled = false;
                 }
+                
+                InstalledGames.Add(gameInfo);
             }
 
             // Update count from games.json
-            int totalGames = _gamesLibraryService.GetInstalledGames().Count;
-            StatusMessage = $"{totalGames} game(s) in library";
+            int totalGames = _gamesLibraryService.Games.Count;
+            int installedCount = _gamesLibraryService.GetInstalledGames().Count;
+            StatusMessage = $"{installedCount} installed, {totalGames} game(s) in library";
             await Task.CompletedTask;
         }
 
@@ -486,10 +489,13 @@ namespace SalsaNOWGames.ViewModels
                 {
                     if (_depotDownloaderService.DeleteGame(game.AppId))
                     {
-                        // Remove from games.json
-                        _gamesLibraryService.RemoveGame(game.AppId);
+                        // Mark as uninstalled in games.json (don't remove)
+                        _gamesLibraryService.MarkAsUninstalled(game.AppId);
                         _settingsService.RemoveInstalledGame(game.AppId);
-                        InstalledGames.Remove(game);
+                        
+                        // Update the game in the list instead of removing
+                        game.IsInstalled = false;
+                        game.SizeOnDisk = 0;
                         StatusMessage = $"{game.Name} has been deleted.";
                     }
                     else
