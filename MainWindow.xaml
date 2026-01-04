@@ -435,36 +435,17 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     
-                    <TextBlock Text="Download by App ID" 
+                    <TextBlock Text="Download Progress" 
                                FontSize="24" 
                                FontWeight="SemiBold" 
                                Foreground="{StaticResource TextBrush}"
                                Margin="0,0,0,15"/>
                     
-                    <!-- App ID Input -->
-                    <Grid Grid.Row="1" Margin="0,0,0,20">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="300"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        
-                        <TextBox Text="{Binding AppIdInput, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource ModernTextBox}"
-                                 Grid.Column="0"/>
-                        <Button Content="⬇️ Download" 
-                                Style="{StaticResource ModernButton}"
-                                Command="{Binding DownloadByAppIdCommand}"
-                                Grid.Column="1"
-                                Margin="10,0,0,0"
-                                IsEnabled="{Binding IsDownloading, Converter={StaticResource InverseBool}}"/>
-                    </Grid>
-                    
                     <!-- Session Status -->
-                    <Border Grid.Row="2" 
+                    <Border Grid.Row="1" 
                             Background="{StaticResource PrimaryBrush}" 
                             CornerRadius="8" 
                             Padding="15"
@@ -484,7 +465,7 @@
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}"/>
                             </StackPanel>
-                            <TextBlock Text="Session active - ready to download games" 
+                            <TextBlock Text="Search for games to download them" 
                                        FontSize="12"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        Margin="18,5,0,0"/>
@@ -492,7 +473,7 @@
                     </Border>
                     
                     <!-- Download Progress & Output -->
-                    <Grid Grid.Row="3">
+                    <Grid Grid.Row="2">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>

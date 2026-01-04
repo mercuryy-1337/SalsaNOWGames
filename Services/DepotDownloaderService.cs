@@ -208,9 +208,7 @@ namespace SalsaNOWGames.Services
             }
         }
 
-        /// <summary>
-        /// Submit Steam Guard code to the running process
-        /// </summary>
+        /* Submit Steam Guard code to the running process */
         public void SubmitSteamGuardCode(string code)
         {
             if (_currentProcess != null && !_currentProcess.HasExited)
@@ -234,10 +232,10 @@ namespace SalsaNOWGames.Services
             }
         }
 
-        /// <summary>
-        /// Download a game using saved Steam session (WebView2 login)
-        /// Uses the -remember-password flag which looks for saved credentials in ~/.DepotDownloader/
-        /// </summary>
+        /*
+         * Download a game using saved Steam session (WebView2 login)
+         * Uses the -remember-password flag which looks for saved credentials in ~/.DepotDownloader/
+         */
         public async Task<bool> DownloadGameWithSessionAsync(string appId, SteamSession session)
         {
             try
@@ -381,6 +379,10 @@ namespace SalsaNOWGames.Services
             return GetDirectorySize(new DirectoryInfo(gamePath));
         }
 
+        /*
+         * Recursively calculates directory size
+         * Source: https://stackoverflow.com/questions/468119/whats-the-best-way-to-calculate-the-size-of-a-directory-in-net
+         */
         private long GetDirectorySize(DirectoryInfo dir)
         {
             long size = 0;

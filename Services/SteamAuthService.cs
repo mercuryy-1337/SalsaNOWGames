@@ -131,9 +131,7 @@ namespace SalsaNOWGames.Services
             catch { }
         }
 
-        /// <summary>
-        /// Parse cookies from WebView2 to create a Steam session.
-        /// </summary>
+        /* Parse cookies from WebView2 to create a Steam session. */
         public SteamSession ParseCookies(string cookieString, string currentUrl)
         {
             var session = new SteamSession();
@@ -173,10 +171,10 @@ namespace SalsaNOWGames.Services
             return session;
         }
 
-        /// <summary>
-        /// Extract the refresh token from Steam's new JWT-based auth.
-        /// The steamLoginSecure cookie now contains a JWT that can be used as a refresh token.
-        /// </summary>
+        /*
+         * Extract the refresh token from Steam's new JWT-based auth.
+         * The steamLoginSecure cookie now contains a JWT that can be used as a refresh token.
+         */
         public string ExtractRefreshToken(string steamLoginSecure)
         {
             if (string.IsNullOrEmpty(steamLoginSecure)) return null;
@@ -190,9 +188,7 @@ namespace SalsaNOWGames.Services
             return null;
         }
 
-        /// <summary>
-        /// Check if we have a valid DepotDownloader saved session.
-        /// </summary>
+        /* Check if we have a valid DepotDownloader saved session. */
         public bool HasDepotDownloaderSession(string username)
         {
             try
@@ -211,9 +207,7 @@ namespace SalsaNOWGames.Services
             return false;
         }
 
-        /// <summary>
-        /// Get the arguments needed for DepotDownloader based on current auth state.
-        /// </summary>
+        /* Get the arguments needed for DepotDownloader based on current auth state. */
         public string GetDepotDownloaderAuthArgs()
         {
             if (_currentSession == null || !_currentSession.IsValid)

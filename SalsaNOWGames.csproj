@@ -67,9 +67,11 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="Models\GameInfo.cs" />
+    <Compile Include="Models\InstalledGame.cs" />
     <Compile Include="Models\SteamSession.cs" />
     <Compile Include="Models\UserSettings.cs" />
     <Compile Include="Services\DepotDownloaderService.cs" />
+    <Compile Include="Services\GamesLibraryService.cs" />
     <Compile Include="Services\SteamApiService.cs" />
     <Compile Include="Services\SteamAuthService.cs" />
     <Compile Include="Services\SettingsService.cs" />

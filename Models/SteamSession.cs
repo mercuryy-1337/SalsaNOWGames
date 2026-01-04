@@ -40,6 +40,10 @@ namespace SalsaNOWGames.Models
         public bool IsValid => !string.IsNullOrEmpty(Username) && 
                                (!string.IsNullOrEmpty(EncryptedPassword) || ExpiresAt > DateTime.Now);
 
+        /*
+         * Encrypts password using Windows DPAPI for secure storage
+         * Source: https://stackoverflow.com/questions/12657792/how-to-securely-save-username-password-local
+         */
         public void SetPassword(string password)
         {
             if (string.IsNullOrEmpty(password)) return;

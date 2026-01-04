@@ -19,26 +19,22 @@ namespace SalsaNOWGames.Services
             _jsonSerializer = new JavaScriptSerializer();
         }
 
-        /// <summary>
-        /// Gets the Steam header image URL for a given app ID.
-        /// Format: https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg
-        /// </summary>
+        /*
+         * Gets the Steam header image URL for a given app ID.
+         * Format: https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg
+         */
         public string GetHeaderImageUrl(string appId)
         {
             return $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg";
         }
 
-        /// <summary>
-        /// Gets the Steam library capsule image URL (600x900 vertical).
-        /// </summary>
+        /* Gets the Steam library capsule image URL (600x900 vertical). */
         public string GetLibraryCapsuleUrl(string appId)
         {
             return $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/library_600x900.jpg";
         }
 
-        /// <summary>
-        /// Gets game info from Steam Store API.
-        /// </summary>
+        /* Gets game info from Steam Store API. */
         public async Task<GameInfo> GetGameInfoAsync(string appId)
         {
             var gameInfo = new GameInfo
@@ -87,9 +83,7 @@ namespace SalsaNOWGames.Services
             return gameInfo;
         }
 
-        /// <summary>
-        /// Search for games on Steam.
-        /// </summary>
+        /* Search for games on Steam. */
         public async Task<List<GameInfo>> SearchGamesAsync(string query)
         {
             var results = new List<GameInfo>();
@@ -141,9 +135,7 @@ namespace SalsaNOWGames.Services
             return results;
         }
 
-        /// <summary>
-        /// Gets Steam user profile using Steam Web API (requires Steam ID).
-        /// </summary>
+        /* Gets Steam user profile using Steam Web API (requires Steam ID). */
         public async Task<(string username, string avatarUrl)> GetUserProfileAsync(string steamId)
         {
             try

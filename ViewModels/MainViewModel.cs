@@ -17,6 +17,7 @@ namespace SalsaNOWGames.ViewModels
         private readonly SteamApiService _steamApiService;
         private readonly DepotDownloaderService _depotDownloaderService;
         private readonly SteamAuthService _steamAuthService;
+        private readonly GamesLibraryService _gamesLibraryService;
 
         // Login state
         private bool _isLoggedIn;
@@ -46,6 +47,7 @@ namespace SalsaNOWGames.ViewModels
             _steamApiService = new SteamApiService();
             _depotDownloaderService = new DepotDownloaderService(_settingsService.Settings.InstallDirectory);
             _steamAuthService = new SteamAuthService();
+            _gamesLibraryService = new GamesLibraryService();
 
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
@@ -94,6 +96,10 @@ namespace SalsaNOWGames.ViewModels
                     StatusMessage = message;
                     if (success && SelectedGame != null)
                     {
+                        // Add game to games.json
+                        string installPath = _depotDownloaderService.GetGameInstallPath(SelectedGame.AppId);
+                        _gamesLibraryService.AddGame(SelectedGame, installPath);
+                        
                         _settingsService.AddInstalledGame(SelectedGame.AppId);
                         SelectedGame.IsDownloading = false;
                         SelectedGame.IsInstalled = true;
@@ -353,24 +359,38 @@ namespace SalsaNOWGames.ViewModels
         {
             InstalledGames.Clear();
 
-            string gamesDir = _depotDownloaderService.GamesDirectory;
-            if (!Directory.Exists(gamesDir)) return;
+            // Load games from games.json
+            _gamesLibraryService.LoadGames();
+            var installedGames = _gamesLibraryService.GetInstalledGames();
 
-            foreach (var dir in Directory.GetDirectories(gamesDir))
+            foreach (var game in installedGames)
             {
-                string appIdFile = Path.Combine(dir, "steam_appid.txt");
-                if (File.Exists(appIdFile))
+                var gameInfo = new GameInfo
                 {
-                    string appId = File.ReadAllText(appIdFile).Trim();
-                    var gameInfo = await _steamApiService.GetGameInfoAsync(appId);
-                    gameInfo.IsInstalled = true;
-                    gameInfo.InstallPath = dir;
-                    gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(appId);
+                    AppId = game.Id,
+                    Name = game.Name,
+                    HeaderImageUrl = game.HeaderImageUrl,
+                    InstallPath = game.InstallPath,
+                    IsInstalled = game.IsInstalled
+                };
+                
+                // Get size on disk if the game folder exists
+                if (!string.IsNullOrEmpty(game.InstallPath) && Directory.Exists(game.InstallPath))
+                {
+                    gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(game.Id);
                     InstalledGames.Add(gameInfo);
+                }
+                else
+                {
+                    // Game folder doesn't exist, mark as not installed
+                    _gamesLibraryService.MarkAsUninstalled(game.Id);
                 }
             }
 
-            StatusMessage = $"{InstalledGames.Count} game(s) in library";
+            // Update count from games.json
+            int totalGames = _gamesLibraryService.GetInstalledGames().Count;
+            StatusMessage = $"{totalGames} game(s) in library";
+            await Task.CompletedTask;
         }
 
         private async Task SearchGamesAsync()
@@ -466,6 +486,8 @@ namespace SalsaNOWGames.ViewModels
                 {
                     if (_depotDownloaderService.DeleteGame(game.AppId))
                     {
+                        // Remove from games.json
+                        _gamesLibraryService.RemoveGame(game.AppId);
                         _settingsService.RemoveInstalledGame(game.AppId);
                         InstalledGames.Remove(game);
                         StatusMessage = $"{game.Name} has been deleted.";

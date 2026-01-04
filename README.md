@@ -7,13 +7,17 @@ A modern WPF Steam game downloader built on top of [DepotDownloader](https://git
 
 ## Features
 
-- 🎮 **Steam Library Management** - Browse and manage your downloaded games *(coming soon)*
+- 🎮 **Steam Library Management** - Browse and manage your downloaded games
 - 🔍 **Game Search** - Search for games by name or App ID
 - 📥 **Game Downloads** - Download games directly from Steam's CDN
 - 🔐 **Steam Authentication** - Secure login with Steam Guard support
 - 💾 **Persistent Sessions** - Stay logged in between app restarts
 - 🎨 **Modern Dark UI** - Steam-inspired dark theme interface
 - 📝 **Download Logging** - All operations logged to `SalsaNOWGames.log`
+
+## Roadmap
+
+🚧 **Coming Soon**: Direct Steam Library integration - automatically show all games from your Steam library without searching!
 
 ## Requirements
 

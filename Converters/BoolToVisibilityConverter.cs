@@ -9,12 +9,41 @@ namespace SalsaNOWGames.Converters
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
+            bool invert = parameter != null && parameter.ToString().ToLower() == "invert";
+            
+            // Handle boolean
             if (value is bool boolValue)
             {
-                bool invert = parameter != null && parameter.ToString().ToLower() == "invert";
                 if (invert) boolValue = !boolValue;
                 return boolValue ? Visibility.Visible : Visibility.Collapsed;
             }
+            
+            // Handle int (for Count properties)
+            if (value is int intValue)
+            {
+                bool hasItems = intValue > 0;
+                if (invert) hasItems = !hasItems;
+                return hasItems ? Visibility.Visible : Visibility.Collapsed;
+            }
+            
+            // Handle string comparison (for CurrentView)
+            if (value is string strValue && parameter != null)
+            {
+                string paramStr = parameter.ToString();
+                if (paramStr.StartsWith("invert:"))
+                {
+                    string compareValue = paramStr.Substring(7);
+                    return strValue != compareValue ? Visibility.Visible : Visibility.Collapsed;
+                }
+                return strValue == paramStr ? Visibility.Visible : Visibility.Collapsed;
+            }
+            
+            // Handle null/empty strings
+            if (value == null || (value is string s && string.IsNullOrEmpty(s)))
+            {
+                return invert ? Visibility.Visible : Visibility.Collapsed;
+            }
+            
             return Visibility.Collapsed;
         }
 
