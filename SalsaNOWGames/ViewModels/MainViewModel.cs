@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Input;
 using SalsaNOWGames.Models;
 using SalsaNOWGames.Services;
+using SalsaNOWGames.Views;
 
 namespace SalsaNOWGames.ViewModels
 {
@@ -15,15 +16,15 @@ namespace SalsaNOWGames.ViewModels
         private readonly SettingsService _settingsService;
         private readonly SteamApiService _steamApiService;
         private readonly DepotDownloaderService _depotDownloaderService;
+        private readonly SteamAuthService _steamAuthService;
 
         // Login state
         private bool _isLoggedIn;
         private string _steamUsername;
-        private string _steamPassword;
+        private SteamSession _currentSession;
         private string _avatarUrl;
         private string _loginError;
         private bool _isLoggingIn;
-        private bool _rememberMe;
 
         // Game library state
         private ObservableCollection<GameInfo> _installedGames;
@@ -44,11 +45,11 @@ namespace SalsaNOWGames.ViewModels
             _settingsService = new SettingsService();
             _steamApiService = new SteamApiService();
             _depotDownloaderService = new DepotDownloaderService(_settingsService.Settings.InstallDirectory);
+            _steamAuthService = new SteamAuthService();
 
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
             _currentView = "login";
-            _rememberMe = true;
 
             // Initialize commands
             LoginCommand = new RelayCommand(async () => await LoginAsync(), () => !IsLoggingIn);
@@ -102,8 +103,32 @@ namespace SalsaNOWGames.ViewModels
                 });
             };
 
+            _depotDownloaderService.OnSteamGuardRequired += (message) =>
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    PromptForSteamGuardCode(message);
+                });
+            };
+
             // Check for existing login
             CheckExistingLogin();
+        }
+
+        private void PromptForSteamGuardCode(string message)
+        {
+            var dialog = new SteamGuardDialog(message);
+            dialog.Owner = Application.Current.MainWindow;
+            if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.Code))
+            {
+                _depotDownloaderService.SubmitSteamGuardCode(dialog.Code);
+                DownloadOutput += $"Steam Guard code submitted.{Environment.NewLine}";
+            }
+            else
+            {
+                DownloadOutput += $"Steam Guard code cancelled.{Environment.NewLine}";
+                CancelDownload();
+            }
         }
 
         #region Properties
@@ -120,10 +145,10 @@ namespace SalsaNOWGames.ViewModels
             set => SetProperty(ref _steamUsername, value);
         }
 
-        public string SteamPassword
+        public SteamSession CurrentSession
         {
-            get => _steamPassword;
-            set => SetProperty(ref _steamPassword, value);
+            get => _currentSession;
+            set => SetProperty(ref _currentSession, value);
         }
 
         public string AvatarUrl
@@ -142,12 +167,6 @@ namespace SalsaNOWGames.ViewModels
         {
             get => _isLoggingIn;
             set => SetProperty(ref _isLoggingIn, value);
-        }
-
-        public bool RememberMe
-        {
-            get => _rememberMe;
-            set => SetProperty(ref _rememberMe, value);
         }
 
         public ObservableCollection<GameInfo> InstalledGames
@@ -233,6 +252,20 @@ namespace SalsaNOWGames.ViewModels
 
         private void CheckExistingLogin()
         {
+            // First check for saved Steam session
+            var savedSession = _steamAuthService.LoadSession();
+            if (savedSession != null && savedSession.IsValid)
+            {
+                CurrentSession = savedSession;
+                IsLoggedIn = true;
+                SteamUsername = savedSession.Username ?? "Steam User";
+                AvatarUrl = savedSession.AvatarUrl;
+                CurrentView = "library";
+                _ = RefreshInstalledGamesAsync();
+                return;
+            }
+
+            // Fallback to old settings
             if (_settingsService.IsLoggedIn)
             {
                 IsLoggedIn = true;
@@ -243,38 +276,46 @@ namespace SalsaNOWGames.ViewModels
             }
         }
 
+        private string _steamPassword;
+
         private async Task LoginAsync()
         {
-            if (string.IsNullOrWhiteSpace(SteamUsername))
-            {
-                LoginError = "Please enter your Steam username.";
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(SteamPassword))
-            {
-                LoginError = "Please enter your Steam password.";
-                return;
-            }
-
             IsLoggingIn = true;
             LoginError = "";
 
             try
             {
-                // For now, we'll just save the credentials and let DepotDownloader handle auth
-                // Steam doesn't have a public OAuth for game downloads
-                
-                if (RememberMe)
-                {
-                    // Store login info (username only for display, not password)
-                    _settingsService.SetLogin(SteamUsername, SteamUsername, "");
-                }
+                // Open Steam login window
+                var loginWindow = new SteamLoginWindow();
+                loginWindow.Owner = Application.Current.MainWindow;
+                var result = loginWindow.ShowDialog();
 
-                IsLoggedIn = true;
-                CurrentView = "library";
-                StatusMessage = $"Welcome, {SteamUsername}!";
-                await RefreshInstalledGamesAsync();
+                if (result == true && !string.IsNullOrEmpty(loginWindow.Username) && !string.IsNullOrEmpty(loginWindow.Password))
+                {
+                    // Store password for downloads
+                    _steamPassword = loginWindow.Password;
+                    
+                    // Create session
+                    CurrentSession = loginWindow.Session ?? new SteamSession
+                    {
+                        Username = loginWindow.Username,
+                        ExpiresAt = DateTime.UtcNow.AddDays(30)
+                    };
+                    
+                    // Save session for future use
+                    _steamAuthService.SaveSession(CurrentSession);
+
+                    // Update UI
+                    IsLoggedIn = true;
+                    SteamUsername = loginWindow.Username;
+                    CurrentView = "library";
+                    StatusMessage = $"Welcome, {SteamUsername}!";
+                    await RefreshInstalledGamesAsync();
+                }
+                else
+                {
+                    LoginError = "Login cancelled or failed.";
+                }
             }
             catch (Exception ex)
             {
@@ -289,9 +330,10 @@ namespace SalsaNOWGames.ViewModels
         private void Logout()
         {
             _settingsService.ClearLogin();
+            _steamAuthService.ClearSession();
+            CurrentSession = null;
             IsLoggedIn = false;
             SteamUsername = "";
-            SteamPassword = "";
             AvatarUrl = "";
             CurrentView = "login";
             InstalledGames.Clear();
@@ -372,10 +414,12 @@ namespace SalsaNOWGames.ViewModels
         {
             if (game == null) return;
 
-            if (string.IsNullOrWhiteSpace(SteamPassword))
+            // Check if we have valid credentials
+            if (string.IsNullOrEmpty(SteamUsername) || string.IsNullOrEmpty(_steamPassword))
             {
-                StatusMessage = "Please enter your Steam password to download games.";
-                CurrentView = "download";
+                StatusMessage = "Please sign in to Steam to download games.";
+                LoginError = "Your session has expired. Please sign in again.";
+                CurrentView = "login";
                 return;
             }
 
@@ -390,7 +434,8 @@ namespace SalsaNOWGames.ViewModels
 
             try
             {
-                await _depotDownloaderService.DownloadGameAsync(game.AppId, SteamUsername, SteamPassword);
+                // Use username/password based download
+                await _depotDownloaderService.DownloadGameAsync(game.AppId, SteamUsername, _steamPassword);
             }
             catch (Exception ex)
             {

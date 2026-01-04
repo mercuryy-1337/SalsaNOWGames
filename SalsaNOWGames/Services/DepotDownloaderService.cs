@@ -6,6 +6,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using SalsaNOWGames.Models;
 
 namespace SalsaNOWGames.Services
 {
@@ -14,18 +15,46 @@ namespace SalsaNOWGames.Services
         private readonly string _salsaNowDirectory;
         private readonly string _depotDownloaderPath;
         private readonly string _gamesDirectory;
+        private readonly string _logFilePath;
         private Process _currentProcess;
         private CancellationTokenSource _cancellationTokenSource;
+        private StreamWriter _logWriter;
 
         public event Action<string> OnOutputReceived;
         public event Action<double> OnProgressChanged;
         public event Action<bool, string> OnDownloadComplete;
+        public event Action<string> OnSteamGuardRequired;
 
         public DepotDownloaderService(string installDirectory = null)
         {
             _salsaNowDirectory = @"I:\Apps\SalsaNOW";
             _depotDownloaderPath = Path.Combine(_salsaNowDirectory, "DepotDownloader", "DepotDownloader.exe");
             _gamesDirectory = installDirectory ?? Path.Combine(_salsaNowDirectory, "DepotDownloader", "Games");
+            _logFilePath = Path.Combine(_salsaNowDirectory, "SalsaNOWGames.log");
+            
+            // Initialize log file
+            InitializeLogFile();
+        }
+
+        private void InitializeLogFile()
+        {
+            try
+            {
+                Directory.CreateDirectory(_salsaNowDirectory);
+                _logWriter = new StreamWriter(_logFilePath, true) { AutoFlush = true };
+                LogToFile($"=== SalsaNOW Games Started at {DateTime.Now} ===");
+            }
+            catch { }
+        }
+
+        public void LogToFile(string message)
+        {
+            try
+            {
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                _logWriter?.WriteLine($"[{timestamp}] {message}");
+            }
+            catch { }
         }
 
         public string GamesDirectory => _gamesDirectory;
@@ -78,6 +107,7 @@ namespace SalsaNOWGames.Services
         {
             try
             {
+                LogToFile($"Starting download for AppID: {appId}, User: {username}");
                 await EnsureDepotDownloaderInstalledAsync();
 
                 string gameDirectory = Path.Combine(_gamesDirectory, appId);
@@ -91,7 +121,125 @@ namespace SalsaNOWGames.Services
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = _depotDownloaderPath,
-                    Arguments = $"-app \"{appId}\" -username \"{username}\" -password \"{password}\" -os windows -no-mobile -dir \"{gameDirectory}\"",
+                    Arguments = $"-app \"{appId}\" -username \"{username}\" -password \"{password}\" -os windows -dir \"{gameDirectory}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardInput = true,
+                    CreateNoWindow = true
+                };
+
+                _currentProcess = new Process { StartInfo = psi };
+                
+                _currentProcess.OutputDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                    {
+                        LogToFile($"[OUT] {e.Data}");
+                        OnOutputReceived?.Invoke(e.Data);
+                        ParseProgress(e.Data);
+                        
+                        // Check for Steam Guard prompt
+                        if (e.Data.Contains("STEAM GUARD") || e.Data.Contains("two-factor") || 
+                            e.Data.Contains("2FA") || e.Data.Contains("Please enter") ||
+                            e.Data.Contains("Enter the current code"))
+                        {
+                            LogToFile("Steam Guard code required!");
+                            OnSteamGuardRequired?.Invoke(e.Data);
+                        }
+                    }
+                };
+                _currentProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                    {
+                        LogToFile($"[ERR] {e.Data}");
+                        OnOutputReceived?.Invoke($"[Error] {e.Data}");
+                    }
+                };
+
+                _currentProcess.Start();
+                _currentProcess.BeginOutputReadLine();
+                _currentProcess.BeginErrorReadLine();
+
+                LogToFile("Process started, waiting for completion...");
+                await Task.Run(() => _currentProcess.WaitForExit(), _cancellationTokenSource.Token);
+
+                bool success = _currentProcess.ExitCode == 0;
+                LogToFile($"Download finished. Exit code: {_currentProcess.ExitCode}, Success: {success}");
+                OnDownloadComplete?.Invoke(success, success ? "Download complete!" : "Download failed.");
+                
+                _currentProcess = null;
+                return success;
+            }
+            catch (OperationCanceledException)
+            {
+                LogToFile("Download cancelled by user.");
+                OnDownloadComplete?.Invoke(false, "Download cancelled.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"Error during download: {ex.Message}");
+                OnOutputReceived?.Invoke($"Error: {ex.Message}");
+                OnDownloadComplete?.Invoke(false, ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Submit Steam Guard code to the running process
+        /// </summary>
+        public void SubmitSteamGuardCode(string code)
+        {
+            if (_currentProcess != null && !_currentProcess.HasExited)
+            {
+                try
+                {
+                    LogToFile($"Submitting Steam Guard code: {code}");
+                    _currentProcess.StandardInput.WriteLine(code);
+                    _currentProcess.StandardInput.Flush();
+                    LogToFile("Steam Guard code submitted successfully.");
+                }
+                catch (Exception ex)
+                {
+                    LogToFile($"Error submitting Steam Guard code: {ex.Message}");
+                    OnOutputReceived?.Invoke($"Error submitting code: {ex.Message}");
+                }
+            }
+            else
+            {
+                LogToFile("Cannot submit Steam Guard code - no active process.");
+            }
+        }
+
+        /// <summary>
+        /// Download a game using saved Steam session (WebView2 login)
+        /// Uses the -remember-password flag which looks for saved credentials in ~/.DepotDownloader/
+        /// </summary>
+        public async Task<bool> DownloadGameWithSessionAsync(string appId, SteamSession session)
+        {
+            try
+            {
+                await EnsureDepotDownloaderInstalledAsync();
+
+                // Make sure DepotDownloader config is set up with session
+                var authService = new SteamAuthService();
+                authService.SaveDepotDownloaderConfig(session);
+
+                string gameDirectory = Path.Combine(_gamesDirectory, appId);
+                Directory.CreateDirectory(gameDirectory);
+
+                // Create steam_appid.txt
+                File.WriteAllText(Path.Combine(gameDirectory, "steam_appid.txt"), appId);
+
+                _cancellationTokenSource = new CancellationTokenSource();
+
+                // Use -remember-password to use saved credentials from ~/.DepotDownloader/
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = _depotDownloaderPath,
+                    Arguments = $"-app \"{appId}\" -remember-password -os windows -dir \"{gameDirectory}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

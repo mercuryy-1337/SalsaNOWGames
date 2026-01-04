@@ -26,20 +26,5 @@ namespace SalsaNOWGames
                 }
             };
         }
-
-        private void LoginButton_Click(object sender, RoutedEventArgs e)
-        {
-            // Pass password from PasswordBox to ViewModel
-            _viewModel.SteamPassword = PasswordBox.Password;
-        }
-
-        private void DownloadPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
-        {
-            // Update password for downloads
-            if (sender is PasswordBox passwordBox)
-            {
-                _viewModel.SteamPassword = passwordBox.Password;
-            }
-        }
     }
 }
