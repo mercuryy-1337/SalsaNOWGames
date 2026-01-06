@@ -1,4 +1,4 @@
-name: Build and Deploy to R2
+name: Build, Release and Deploy to R2
 
 on:
   push:
@@ -10,12 +10,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Wrangler
         run: npm install -g wrangler@latest
 
-      - name: Upload settings.json to R2
+      - name: Upload salsa_version.json to R2
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_R2_TOKEN }}
@@ -24,10 +24,14 @@ jobs:
   
   build-and-deploy:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -40,6 +44,52 @@ jobs:
 
       - name: Build Release
         run: msbuild SalsaNOWGames.sln /p:Configuration=Release /p:Platform="Any CPU"
+
+      - name: Get version from salsa_version.json
+        id: get_version
+        shell: pwsh
+        run: |
+          $json = Get-Content -Path salsa_version.json | ConvertFrom-Json
+          $version = $json.version
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "Version: $version"
+
+      - name: Generate changelog from commits
+        id: changelog
+        shell: pwsh
+        run: |
+          $lastTag = git describe --tags --abbrev=0 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            $commits = git log --pretty=format:"- %s" -10
+          } else {
+            $commits = git log --pretty=format:"- %s" "$lastTag..HEAD"
+          }
+          $changelog = $commits -join "`n"
+          if ([string]::IsNullOrEmpty($changelog)) {
+            $changelog = "- Initial release"
+          }
+          # Write to file to handle multiline
+          $changelog | Out-File -FilePath changelog.txt -Encoding utf8
+          echo "Generated changelog"
+
+      - name: Create source code archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path * -DestinationPath SalsaNOWGames-source.zip -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: SalsaNOWGames v${{ steps.get_version.outputs.VERSION }}
+          body_path: changelog.txt
+          draft: false
+          prerelease: false
+          files: |
+            bin/Release/SalsaNOWGames.exe
+            SalsaNOWGames-source.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
