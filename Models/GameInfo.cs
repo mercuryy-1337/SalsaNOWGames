@@ -15,6 +15,8 @@ namespace SalsaNOWGames.Models
         private double _downloadProgress;
         private string _downloadStatus;
         private long _sizeOnDisk;
+        private int _playtimeMinutes;
+        private string _iconUrl;
 
         public string AppId
         {
@@ -85,6 +87,29 @@ namespace SalsaNOWGames.Models
                 }
                 return $"{len:0.##} {sizes[order]}";
             }
+        }
+
+        public int PlaytimeMinutes
+        {
+            get => _playtimeMinutes;
+            set { _playtimeMinutes = value; OnPropertyChanged(); OnPropertyChanged(nameof(PlaytimeFormatted)); }
+        }
+
+        public string PlaytimeFormatted
+        {
+            get
+            {
+                if (_playtimeMinutes <= 0) return "Never played";
+                double hours = _playtimeMinutes / 60.0;
+                if (hours < 1) return $"{_playtimeMinutes} mins";
+                return $"{hours:0.#} hrs";
+            }
+        }
+
+        public string IconUrl
+        {
+            get => _iconUrl;
+            set { _iconUrl = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

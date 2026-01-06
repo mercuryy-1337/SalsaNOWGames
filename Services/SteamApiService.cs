@@ -11,30 +11,29 @@ namespace SalsaNOWGames.Services
     {
         private readonly HttpClient _httpClient;
         private readonly JavaScriptSerializer _jsonSerializer;
+        private readonly OwnedGamesService _ownedGamesService;
 
         public SteamApiService()
         {
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "SalsaNOWGames/1.0");
             _jsonSerializer = new JavaScriptSerializer();
+            _ownedGamesService = new OwnedGamesService();
         }
 
-        /*
-         * Gets the Steam header image URL for a given app ID.
-         * Format: https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg
-         */
-        public string GetHeaderImageUrl(string appId)
+        // Gets header image URL from cached salsa.vdf, falls back to Steam CDN for searches
+        public string GetHeaderImageUrl(string appId, string accountName = null)
         {
+            if (!string.IsNullOrEmpty(accountName))
+            {
+                var cached = _ownedGamesService.GetCachedOwnedGames(accountName);
+                var game = cached?.Games?.Find(g => g.AppId.ToString() == appId);
+                if (!string.IsNullOrEmpty(game?.HeaderImageUrl))
+                    return game.HeaderImageUrl;
+            }
             return $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg";
         }
 
-        /* Gets the Steam library capsule image URL (600x900 vertical). */
-        public string GetLibraryCapsuleUrl(string appId)
-        {
-            return $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/library_600x900.jpg";
-        }
-
-        /* Gets game info from Steam Store API. */
         public async Task<GameInfo> GetGameInfoAsync(string appId)
         {
             var gameInfo = new GameInfo

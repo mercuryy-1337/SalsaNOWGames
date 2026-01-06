@@ -77,5 +77,48 @@ namespace SalsaNOWGames.Services
 
             return accountName;
         }
+
+        /*
+         * Gets the Steam ID (64-bit) for a given Steam account username
+         * Returns null if Steam ID cannot be found
+         */
+        public string GetSteamId64(string accountName)
+        {
+            if (string.IsNullOrEmpty(accountName))
+                return null;
+
+            try
+            {
+                if (!File.Exists(_loginUsersPath))
+                    return null;
+
+                string content = File.ReadAllText(_loginUsersPath);
+                
+                // Find the user block that contains the matching AccountName
+                // The Steam ID is the key of the user block (the 17-digit number)
+                var userBlockPattern = new Regex(
+                    @"""(\d{17})""\s*\{[^}]*""AccountName""\s*""([^""]+)""[^}]*\}",
+                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+                var matches = userBlockPattern.Matches(content);
+                
+                foreach (Match match in matches)
+                {
+                    string steamId64 = match.Groups[1].Value;
+                    string foundAccountName = match.Groups[2].Value;
+                    
+                    if (foundAccountName.Equals(accountName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return steamId64;
+                    }
+                }
+            }
+            catch
+            {
+                // If anything fails, return null
+            }
+
+            return null;
+        }
     }
 }

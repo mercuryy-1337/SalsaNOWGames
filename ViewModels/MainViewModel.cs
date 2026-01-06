@@ -20,6 +20,7 @@ namespace SalsaNOWGames.ViewModels
         private readonly SteamAuthService _steamAuthService;
         private readonly GamesLibraryService _gamesLibraryService;
         private readonly SteamVdfService _steamVdfService;
+        private readonly OwnedGamesService _ownedGamesService;
 
         // Login state
         private bool _isLoggedIn;
@@ -55,6 +56,7 @@ namespace SalsaNOWGames.ViewModels
             _steamAuthService = new SteamAuthService();
             _gamesLibraryService = new GamesLibraryService();
             _steamVdfService = new SteamVdfService();
+            _ownedGamesService = new OwnedGamesService(_steamVdfService);
 
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
@@ -343,6 +345,9 @@ namespace SalsaNOWGames.ViewModels
                 CurrentView = "library";
                 StatusMessage = $"Welcome back, {DisplayName}!";
                 _ = RefreshInstalledGamesAsync();
+                
+                // Fetch owned games in background (doesn't block startup)
+                _ownedGamesService.StartBackgroundRefresh(savedSession.Username);
                 return;
             }
 
@@ -355,6 +360,9 @@ namespace SalsaNOWGames.ViewModels
                 AvatarUrl = _settingsService.Settings.AvatarUrl;
                 CurrentView = "library";
                 _ = RefreshInstalledGamesAsync();
+                
+                // Fetch owned games in background
+                _ownedGamesService.StartBackgroundRefresh(_settingsService.Settings.SteamUsername);
             }
         }
 
