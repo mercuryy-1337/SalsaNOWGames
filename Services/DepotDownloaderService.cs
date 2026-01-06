@@ -32,6 +32,7 @@ namespace SalsaNOWGames.Services
         public event Action<bool, string> OnDownloadComplete;
         public event Action<string> OnSteamGuardRequired;
         public event Action<bool, int> OnPreallocatingChanged;
+        public event Action<bool> OnCleanupInProgress;
 
         public DepotDownloaderService(string installDirectory = null)
         {
@@ -340,6 +341,8 @@ namespace SalsaNOWGames.Services
         public void CancelDownload()
         {
             string appIdToClean = _currentDownloadAppId;
+            _currentDownloadAppId = null;
+            
             try
             {
                 _cancellationTokenSource?.Cancel();
@@ -351,20 +354,89 @@ namespace SalsaNOWGames.Services
             }
             catch { }
 
-            // Clean up partial download files
+            // Clean up partial download files asynchronously to prevent UI freeze
             if (!string.IsNullOrEmpty(appIdToClean))
             {
+                string gameDirectory = Path.Combine(_gamesDirectory, appIdToClean);
+                if (Directory.Exists(gameDirectory))
+                {
+                    // Fire and forget - cleanup runs in background
+                    Task.Run(() => CleanupDirectory(gameDirectory));
+                }
+            }
+        }
+
+        private void CleanupDirectory(string directoryPath)
+        {
+            try
+            {
+                OnCleanupInProgress?.Invoke(true);
+                OnOutputReceived?.Invoke("Cleaning up partial download...");
+                
+                var dir = new DirectoryInfo(directoryPath);
+                if (!dir.Exists) return;
+
+                // Delete files in batches to allow progress updates
+                var files = dir.GetFiles("*", SearchOption.AllDirectories);
+                int totalFiles = files.Length;
+                int deletedCount = 0;
+                DateTime lastUpdate = DateTime.MinValue;
+
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        file.Delete();
+                        deletedCount++;
+                        
+                        // Throttle UI updates to every 500ms
+                        var now = DateTime.Now;
+                        if ((now - lastUpdate).TotalMilliseconds >= 500)
+                        {
+                            lastUpdate = now;
+                            OnOutputReceived?.Invoke($"Cleaning up... ({deletedCount:N0}/{totalFiles:N0} files deleted)");
+                        }
+                    }
+                    catch { }
+                }
+
+                // Delete empty directories bottom-up
+                var dirs = dir.GetDirectories("*", SearchOption.AllDirectories);
+                // Sort by depth (deepest first) to delete children before parents
+                Array.Sort(dirs, (a, b) => b.FullName.Length.CompareTo(a.FullName.Length));
+                
+                foreach (var subDir in dirs)
+                {
+                    try
+                    {
+                        if (subDir.Exists && subDir.GetFiles().Length == 0 && subDir.GetDirectories().Length == 0)
+                        {
+                            subDir.Delete();
+                        }
+                    }
+                    catch { }
+                }
+
+                // Finally delete the root directory
                 try
                 {
-                    string gameDirectory = Path.Combine(_gamesDirectory, appIdToClean);
-                    if (Directory.Exists(gameDirectory))
+                    if (dir.Exists)
                     {
-                        Directory.Delete(gameDirectory, true);
+                        dir.Delete(true);
                     }
                 }
                 catch { }
+
+                OnOutputReceived?.Invoke($"Cleanup complete. Deleted {deletedCount:N0} files.");
             }
-            _currentDownloadAppId = null;
+            catch (Exception ex)
+            {
+                OnOutputReceived?.Invoke($"Cleanup error: {ex.Message}");
+            }
+            finally
+            {
+                OnCleanupInProgress?.Invoke(false);
+            }
         }
 
         private bool ParseProgress(string output)
@@ -426,22 +498,29 @@ namespace SalsaNOWGames.Services
             return size;
         }
 
-        public bool DeleteGame(string appId)
+        public void DeleteGameAsync(string appId, Action<bool> onComplete)
         {
-            try
+            string gamePath = GetGameInstallPath(appId);
+            if (!Directory.Exists(gamePath))
             {
-                string gamePath = GetGameInstallPath(appId);
-                if (Directory.Exists(gamePath))
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            // Run deletion on background thread to prevent UI freeze
+            Task.Run(() =>
+            {
+                try
                 {
-                    Directory.Delete(gamePath, true);
-                    return true;
+                    CleanupDirectory(gamePath);
+                    onComplete?.Invoke(true);
                 }
-            }
-            catch (Exception ex)
-            {
-                OnOutputReceived?.Invoke($"Error deleting game: {ex.Message}");
-            }
-            return false;
+                catch (Exception ex)
+                {
+                    OnOutputReceived?.Invoke($"Error deleting game: {ex.Message}");
+                    onComplete?.Invoke(false);
+                }
+            });
         }
 
         public void OpenGameFolder(string appId)

@@ -38,6 +38,7 @@ namespace SalsaNOWGames.ViewModels
         private string _appIdInput;
         private bool _isSearching;
         private bool _isDownloading;
+        private bool _isCleaningUp;
         private string _downloadOutput;
         private string _statusMessage;
 
@@ -109,6 +110,22 @@ namespace SalsaNOWGames.ViewModels
                     if (SelectedGame != null && isPreallocating)
                     {
                         SelectedGame.DownloadStatus = "Pre-allocating files...";
+                    }
+                });
+            };
+
+            _depotDownloaderService.OnCleanupInProgress += (isCleaningUp) =>
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    _isCleaningUp = isCleaningUp;
+                    if (isCleaningUp)
+                    {
+                        StatusMessage = "Cleaning up cancelled download...";
+                    }
+                    else
+                    {
+                        StatusMessage = "Cleanup complete.";
                     }
                 });
             };
@@ -557,30 +574,38 @@ namespace SalsaNOWGames.ViewModels
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    if (_depotDownloaderService.DeleteGame(game.AppId))
+                    StatusMessage = $"Deleting {game.Name}...";
+                    
+                    _depotDownloaderService.DeleteGameAsync(game.AppId, (success) =>
                     {
-                        // Mark as uninstalled in games.json (don't remove)
-                        _gamesLibraryService.MarkAsUninstalled(game.AppId);
-                        _settingsService.RemoveInstalledGame(game.AppId);
-                        
-                        // Update the game in the list instead of removing
-                        game.IsInstalled = false;
-                        game.SizeOnDisk = 0;
-                        
-                        // Also update in search results if present
-                        var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
-                        if (searchGame != null)
+                        Application.Current.Dispatcher.Invoke(() =>
                         {
-                            searchGame.IsInstalled = false;
-                        }
-                        
-                        ShowTemporaryStatus($"{game.Name} has been deleted.");
-                        UpdateDriveUsage();
-                    }
-                    else
-                    {
-                        ShowTemporaryStatus("Failed to delete game.");
-                    }
+                            if (success)
+                            {
+                                // Mark as uninstalled in games.json (don't remove)
+                                _gamesLibraryService.MarkAsUninstalled(game.AppId);
+                                _settingsService.RemoveInstalledGame(game.AppId);
+                                
+                                // Update the game in the list instead of removing
+                                game.IsInstalled = false;
+                                game.SizeOnDisk = 0;
+                                
+                                // Also update in search results if present
+                                var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
+                                if (searchGame != null)
+                                {
+                                    searchGame.IsInstalled = false;
+                                }
+                                
+                                ShowTemporaryStatus($"{game.Name} has been deleted.");
+                                UpdateDriveUsage();
+                            }
+                            else
+                            {
+                                ShowTemporaryStatus("Failed to delete game.");
+                            }
+                        });
+                    });
                 }
             }
         }
