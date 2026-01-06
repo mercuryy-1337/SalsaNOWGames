@@ -58,4 +58,25 @@ namespace SalsaNOWGames.Converters
             return false;
         }
     }
+
+    public class BoolOrToVisibilityConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values == null) return Visibility.Collapsed;
+            
+            foreach (var value in values)
+            {
+                if (value is bool boolValue && boolValue)
+                    return Visibility.Visible;
+            }
+            
+            return Visibility.Collapsed;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

@@ -17,6 +17,9 @@ namespace SalsaNOWGames.Models
         private long _sizeOnDisk;
         private int _playtimeMinutes;
         private string _iconUrl;
+        private bool _isInstalledViaSteam;
+        private bool _isInstalledViaSalsa;
+        private bool _hasShortcut;
 
         public string AppId
         {
@@ -110,6 +113,24 @@ namespace SalsaNOWGames.Models
         {
             get => _iconUrl;
             set { _iconUrl = value; OnPropertyChanged(); }
+        }
+
+        public bool IsInstalledViaSteam
+        {
+            get => _isInstalledViaSteam;
+            set { _isInstalledViaSteam = value; OnPropertyChanged(); }
+        }
+
+        public bool IsInstalledViaSalsa
+        {
+            get => _isInstalledViaSalsa;
+            set { _isInstalledViaSalsa = value; OnPropertyChanged(); }
+        }
+
+        public bool HasShortcut
+        {
+            get => _hasShortcut;
+            set { _hasShortcut = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

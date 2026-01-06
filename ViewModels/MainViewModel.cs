@@ -70,6 +70,20 @@ namespace SalsaNOWGames.ViewModels
                 UpdateDefaultStatus();
             };
 
+            // Subscribe to owned games updated event (auto-refresh when background fetch completes)
+            _ownedGamesService.OnOwnedGamesUpdated += (response) =>
+            {
+                Application.Current.Dispatcher.Invoke(async () =>
+                {
+                    // Merge any games.json data first
+                    if (_gamesLibraryService.Games.Any())
+                    {
+                        _ownedGamesService.MergeFromGamesJson(_gamesLibraryService.Games);
+                    }
+                    await RefreshInstalledGamesAsync();
+                });
+            };
+
             // Initialize commands
             LoginCommand = new RelayCommand(async () => await LoginAsync(), () => !IsLoggingIn);
             LogoutCommand = new RelayCommand(Logout);
@@ -77,8 +91,11 @@ namespace SalsaNOWGames.ViewModels
             DownloadByAppIdCommand = new RelayCommand(async () => await DownloadByAppIdAsync(), () => !IsDownloading);
             DownloadGameCommand = new RelayCommand(async (o) => await DownloadGameAsync(o as GameInfo), (o) => !IsDownloading);
             DeleteGameCommand = new RelayCommand(DeleteGame);
+            CreateShortcutCommand = new RelayCommand(CreateShortcut);
+            OpenSteamLibraryCommand = new RelayCommand(OpenSteamLibrary);
             OpenFolderCommand = new RelayCommand(OpenGameFolder);
             CancelDownloadCommand = new RelayCommand(CancelDownload, () => IsDownloading);
+            EnterSteamGuardCommand = new RelayCommand(ManuallyEnterSteamGuard, () => IsDownloading);
             ShowLibraryCommand = new RelayCommand(() => CurrentView = "library");
             ShowSearchCommand = new RelayCommand(async () => await ShowSearchViewAsync());
             ShowDownloadCommand = new RelayCommand(() => CurrentView = "download");
@@ -140,26 +157,27 @@ namespace SalsaNOWGames.ViewModels
                     StatusMessage = message;
                     if (success && SelectedGame != null)
                     {
-                        // Add game to games.json
+                        // Get install path
                         string installPath = _depotDownloaderService.GetGameInstallPath(SelectedGame.AppId);
+                        
+                        // Update salsa.vdf with install status (primary)
+                        _ownedGamesService.MarkGameAsInstalled(SelectedGame.AppId, installPath);
+                        
+                        // Also update games.json for backward compatibility (will be deprecated sometime idk)
                         _gamesLibraryService.AddGame(SelectedGame, installPath);
                         
                         _settingsService.AddInstalledGame(SelectedGame.AppId);
                         SelectedGame.IsDownloading = false;
                         SelectedGame.IsInstalled = true;
+                        SelectedGame.IsInstalledViaSalsa = true;
                         SelectedGame.DownloadStatus = "Installed";
                         await RefreshInstalledGamesAsync();
                     }
                 });
             };
 
-            _depotDownloaderService.OnSteamGuardRequired += (message) =>
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    PromptForSteamGuardCode(message);
-                });
-            };
+            // Steam Guard code entry is handled manually via the "Enter Code" button
+            // No automatic popup - users click the button when needed
 
             // Check for existing login
             CheckExistingLogin();
@@ -179,6 +197,11 @@ namespace SalsaNOWGames.ViewModels
                 DownloadOutput += $"Steam Guard code cancelled.{Environment.NewLine}";
                 CancelDownload();
             }
+        }
+
+        private void ManuallyEnterSteamGuard()
+        {
+            PromptForSteamGuardCode("Enter your Steam Guard code from your mobile app or email.");
         }
 
         #region Properties
@@ -305,8 +328,11 @@ namespace SalsaNOWGames.ViewModels
         public ICommand DownloadByAppIdCommand { get; }
         public ICommand DownloadGameCommand { get; }
         public ICommand DeleteGameCommand { get; }
+        public ICommand CreateShortcutCommand { get; }
+        public ICommand OpenSteamLibraryCommand { get; }
         public ICommand OpenFolderCommand { get; }
         public ICommand CancelDownloadCommand { get; }
+        public ICommand EnterSteamGuardCommand { get; }
         public ICommand ShowLibraryCommand { get; }
         public ICommand ShowSearchCommand { get; }
         public ICommand ShowDownloadCommand { get; }
@@ -367,6 +393,7 @@ namespace SalsaNOWGames.ViewModels
         }
 
         private string _steamPassword;
+        private bool _useNoMobile; // True = manual code entry, False = mobile app approval
 
         private async Task LoginAsync()
         {
@@ -384,6 +411,9 @@ namespace SalsaNOWGames.ViewModels
                 {
                     // Store password for downloads
                     _steamPassword = loginWindow.Password;
+                    
+                    // Store no-mobile preference (manual code entry vs app approval)
+                    _useNoMobile = loginWindow.UseNoMobile;
                     
                     // Create session with encrypted password
                     CurrentSession = loginWindow.Session ?? new SteamSession
@@ -440,40 +470,112 @@ namespace SalsaNOWGames.ViewModels
         {
             InstalledGames.Clear();
 
-            // Load ALL games from games.json (both installed and uninstalled)
+            // Refresh Steam library detection
+            _gamesLibraryService.RefreshSteamLibrary();
             _gamesLibraryService.LoadGames();
-            var allGames = _gamesLibraryService.Games;
 
-            foreach (var game in allGames)
+            // Get owned games from salsa.vdf cache
+            var ownedGames = _ownedGamesService.GetCachedOwnedGames(SteamUsername);
+            if (ownedGames == null || ownedGames.Games == null || ownedGames.Games.Count == 0)
             {
-                var gameInfo = new GameInfo
+                // Fallback to games.json if salsa.vdf is empty - sort alphabetically
+                var allGames = _gamesLibraryService.Games.OrderBy(g => g.Name).ToList();
+                foreach (var game in allGames)
                 {
-                    AppId = game.Id,
-                    Name = game.Name,
-                    HeaderImageUrl = game.HeaderImageUrl,
-                    InstallPath = game.InstallPath,
-                    IsInstalled = game.IsInstalled
-                };
-                
-                // Get size on disk if the game folder exists and is installed
-                if (game.IsInstalled && !string.IsNullOrEmpty(game.InstallPath) && Directory.Exists(game.InstallPath))
-                {
-                    gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(game.Id);
+                    var gameInfo = CreateGameInfoFromLibrary(game);
+                    InstalledGames.Add(gameInfo);
                 }
-                else if (game.IsInstalled)
+            }
+            else
+            {
+                // Merge games.json data into salsa.vdf (one-time migration per session)
+                if (_gamesLibraryService.Games.Any())
                 {
-                    // Game was marked installed but folder doesn't exist, mark as not installed
-                    _gamesLibraryService.MarkAsUninstalled(game.Id);
-                    gameInfo.IsInstalled = false;
+                    _ownedGamesService.MergeFromGamesJson(_gamesLibraryService.Games);
                 }
-                
-                InstalledGames.Add(gameInfo);
+
+                // Use salsa.vdf as primary source - sort alphabetically
+                var sortedGames = ownedGames.Games.OrderBy(g => g.Name).ToList();
+                foreach (var game in sortedGames)
+                {
+                    string appId = game.AppId.ToString();
+                    
+                    // Use salsa.vdf for Salsa install status, SteamLibraryService for Steam
+                    bool steamInstalled = _gamesLibraryService.IsInstalledViaSteam(appId);
+                    bool salsaInstalled = game.InstallSalsa;
+                    string installPath = !string.IsNullOrEmpty(game.InstallPath) 
+                        ? game.InstallPath 
+                        : _gamesLibraryService.GetInstallPath(appId);
+                    
+                    var gameInfo = new GameInfo
+                    {
+                        AppId = appId,
+                        Name = game.Name,
+                        HeaderImageUrl = game.HeaderImageUrl,
+                        IconUrl = game.IconUrl,
+                        PlaytimeMinutes = game.PlaytimeForeverMinutes,
+                        IsInstalled = steamInstalled || salsaInstalled,
+                        IsInstalledViaSteam = steamInstalled,
+                        IsInstalledViaSalsa = salsaInstalled,
+                        HasShortcut = game.HasShortcut,
+                        InstallPath = installPath
+                    };
+
+                    // Validate install path exists for Salsa installs
+                    if (salsaInstalled && (string.IsNullOrEmpty(installPath) || !Directory.Exists(installPath)))
+                    {
+                        // Salsa install path invalid, mark as uninstalled in salsa.vdf
+                        _ownedGamesService.MarkGameAsUninstalled(appId);
+                        gameInfo.IsInstalledViaSalsa = false;
+                        gameInfo.IsInstalled = steamInstalled;
+                        gameInfo.InstallPath = null;
+                    }
+
+                    // Get size on disk if installed
+                    if (gameInfo.IsInstalled && !string.IsNullOrEmpty(gameInfo.InstallPath) && Directory.Exists(gameInfo.InstallPath))
+                    {
+                        gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(appId);
+                    }
+
+                    InstalledGames.Add(gameInfo);
+                }
             }
 
-            // Update count from games.json and drive usage
             UpdateDefaultStatus();
             UpdateDriveUsage();
             await Task.CompletedTask;
+        }
+
+        private GameInfo CreateGameInfoFromLibrary(InstalledGame game)
+        {
+            bool steamInstalled = _gamesLibraryService.IsInstalledViaSteam(game.Id);
+            bool salsaInstalled = game.Install?.Salsa ?? false;
+            string installPath = _gamesLibraryService.GetInstallPath(game.Id);
+            
+            var gameInfo = new GameInfo
+            {
+                AppId = game.Id,
+                Name = game.Name,
+                HeaderImageUrl = game.HeaderImageUrl,
+                InstallPath = installPath,
+                IsInstalled = steamInstalled || salsaInstalled,
+                IsInstalledViaSteam = steamInstalled,
+                IsInstalledViaSalsa = salsaInstalled,
+                HasShortcut = game.HasShortcut
+            };
+
+            if (gameInfo.IsInstalled && !string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+            {
+                gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(game.Id);
+            }
+            else if (salsaInstalled && (string.IsNullOrEmpty(installPath) || !Directory.Exists(installPath)))
+            {
+                // Salsa install path invalid, mark as uninstalled
+                _gamesLibraryService.MarkAsUninstalled(game.Id);
+                gameInfo.IsInstalled = steamInstalled;
+            }
+
+            return gameInfo;
         }
 
         /*
@@ -560,8 +662,8 @@ namespace SalsaNOWGames.ViewModels
 
             try
             {
-                // Use username/password based download
-                await _depotDownloaderService.DownloadGameAsync(game.AppId, SteamUsername, _steamPassword);
+                // Use username/password based download with no-mobile preference
+                await _depotDownloaderService.DownloadGameAsync(game.AppId, SteamUsername, _steamPassword, _useNoMobile);
             }
             catch (Exception ex)
             {
@@ -590,12 +692,16 @@ namespace SalsaNOWGames.ViewModels
                         {
                             if (success)
                             {
-                                // Mark as uninstalled in games.json (don't remove)
+                                // Mark as uninstalled in salsa.vdf (primary)
+                                _ownedGamesService.MarkGameAsUninstalled(game.AppId);
+                                
+                                // Also update games.json for backward compatibility
                                 _gamesLibraryService.MarkAsUninstalled(game.AppId);
                                 _settingsService.RemoveInstalledGame(game.AppId);
                                 
                                 // Update the game in the list instead of removing
                                 game.IsInstalled = false;
+                                game.IsInstalledViaSalsa = false;
                                 game.SizeOnDisk = 0;
                                 
                                 // Also update in search results if present
@@ -625,10 +731,51 @@ namespace SalsaNOWGames.ViewModels
             _statusClearTimer.Start();
         }
 
+        private void CreateShortcut(object parameter)
+        {
+            if (parameter is GameInfo game)
+            {
+                try
+                {
+                    // TODO: Implement actual shortcut creation to Steam
+                    // For now, just mark as having a shortcut in salsa.vdf (primary)
+                    _ownedGamesService.UpdateGameShortcut(game.AppId, true);
+                    
+                    // Also update games.json for backward compatibility
+                    _gamesLibraryService.SetHasShortcut(game.AppId, true);
+                    game.HasShortcut = true;
+                    ShowTemporaryStatus($"Shortcut created for {game.Name}");
+                }
+                catch (Exception ex)
+                {
+                    ShowTemporaryStatus($"Failed to create shortcut: {ex.Message}");
+                }
+            }
+        }
+
+        private void OpenSteamLibrary(object parameter)
+        {
+            if (parameter is GameInfo game)
+            {
+                try
+                {
+                    // Open Steam library
+                    System.Diagnostics.Process.Start("steam://open/library");
+                    ShowTemporaryStatus("Opening Steam Library...");
+                }
+                catch (Exception ex)
+                {
+                    ShowTemporaryStatus($"Failed to open Steam: {ex.Message}");
+                }
+            }
+        }
+
         private void UpdateDefaultStatus()
         {
-            int totalGames = _gamesLibraryService.Games.Count;
-            int installedCount = _gamesLibraryService.GetInstalledGames().Count;
+            // Get count from salsa.vdf (owned games)
+            var ownedGames = _ownedGamesService.GetCachedOwnedGames(SteamUsername);
+            int totalGames = ownedGames?.Games?.Count ?? _gamesLibraryService.Games.Count;
+            int installedCount = InstalledGames.Count(g => g.IsInstalled);
             StatusMessage = $"{installedCount} installed, {totalGames} game(s) in library";
         }
 

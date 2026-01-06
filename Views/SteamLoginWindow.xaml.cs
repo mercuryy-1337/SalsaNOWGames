@@ -10,6 +10,7 @@ namespace SalsaNOWGames.Views
         public string Username { get; private set; }
         public string Password { get; private set; }
         public bool RememberCredentials { get; private set; }
+        public bool UseNoMobile { get; private set; }
 
         public SteamLoginWindow()
         {
@@ -42,6 +43,7 @@ namespace SalsaNOWGames.Views
             Username = username;
             Password = password;
             RememberCredentials = RememberCheckBox.IsChecked ?? true;
+            UseNoMobile = NoMobileCheckBox.IsChecked ?? false;
 
             // Create session object
             Session = new SteamSession

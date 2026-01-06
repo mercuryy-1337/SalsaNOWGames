@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
@@ -47,12 +48,29 @@ namespace SalsaNOWGames.Services
 
         [DataMember(Name = "playtime_forever_minutes")]
         public int PlaytimeForeverMinutes { get; set; }
+
+        // Install status fields (merged from games.json)
+        [DataMember(Name = "install_salsa")]
+        public bool InstallSalsa { get; set; }
+
+        [DataMember(Name = "install_steam")]
+        public bool InstallSteam { get; set; }
+
+        [DataMember(Name = "install_path")]
+        public string InstallPath { get; set; }
+
+        [DataMember(Name = "has_shortcut")]
+        public bool HasShortcut { get; set; }
+
+        [DataMember(Name = "installed_date")]
+        public string InstalledDate { get; set; }
     }
 
     // Fetches owned games from SalsaNOW API, caches locally in salsa.vdf (6-hour expiry)
     public class OwnedGamesService
     {
         private const string ApiBaseUrl = "https://slsapi.geforcenowspecs.cloud/owned/v1?steamid=";
+        //private const string ApiBaseUrl = "http://127.0.0.1:5555/owned/v1?steamid=";
         private const int CacheExpiryHours = 6;
         private const int MinRefreshIntervalSeconds = 30;
         
@@ -243,6 +261,11 @@ namespace SalsaNOWGames.Services
                         sb.AppendLine($"\t\t\t\"header_image_url\"\t\t\"{game.HeaderImageUrl}\"");
                         sb.AppendLine($"\t\t\t\"icon_url\"\t\t\"{game.IconUrl}\"");
                         sb.AppendLine($"\t\t\t\"playtime_forever_minutes\"\t\t\"{game.PlaytimeForeverMinutes}\"");
+                        sb.AppendLine($"\t\t\t\"install_salsa\"\t\t\"{(game.InstallSalsa ? "1" : "0")}\"");
+                        sb.AppendLine($"\t\t\t\"install_steam\"\t\t\"{(game.InstallSteam ? "1" : "0")}\"");
+                        sb.AppendLine($"\t\t\t\"install_path\"\t\t\"{EscapeVdfString(game.InstallPath ?? "")}\"");
+                        sb.AppendLine($"\t\t\t\"has_shortcut\"\t\t\"{(game.HasShortcut ? "1" : "0")}\"");
+                        sb.AppendLine($"\t\t\t\"installed_date\"\t\t\"{EscapeVdfString(game.InstalledDate ?? "")}\"");
                         sb.AppendLine("\t\t}");
                     }
                 }
@@ -284,20 +307,40 @@ namespace SalsaNOWGames.Services
                 if (gamesBlockMatch.Success)
                 {
                     string gamesBlock = gamesBlockMatch.Groups[1].Value;
+                    
+                    // Updated pattern to include new fields (optional)
                     var gamePattern = new Regex(
-                        @"""(\d+)""\s*\{[^}]*""name""\s*""([^""]*)""\s*""header_image_url""\s*""([^""]*)""\s*""icon_url""\s*""([^""]*)""\s*""playtime_forever_minutes""\s*""(\d+)""[^}]*\}",
+                        @"""(\d+)""\s*\{([^}]*)\}",
                         RegexOptions.Singleline);
 
                     var matches = gamePattern.Matches(gamesBlock);
                     foreach (Match match in matches)
                     {
+                        string appId = match.Groups[1].Value;
+                        string gameBlock = match.Groups[2].Value;
+
+                        var nameMatch = Regex.Match(gameBlock, @"""name""\s*""([^""]*)""");
+                        var headerMatch = Regex.Match(gameBlock, @"""header_image_url""\s*""([^""]*)""");
+                        var iconMatch = Regex.Match(gameBlock, @"""icon_url""\s*""([^""]*)""");
+                        var playtimeMatch = Regex.Match(gameBlock, @"""playtime_forever_minutes""\s*""(\d+)""");
+                        var installSalsaMatch = Regex.Match(gameBlock, @"""install_salsa""\s*""([^""]*)""");
+                        var installSteamMatch = Regex.Match(gameBlock, @"""install_steam""\s*""([^""]*)""");
+                        var installPathMatch = Regex.Match(gameBlock, @"""install_path""\s*""([^""]*)""");
+                        var hasShortcutMatch = Regex.Match(gameBlock, @"""has_shortcut""\s*""([^""]*)""");
+                        var installedDateMatch = Regex.Match(gameBlock, @"""installed_date""\s*""([^""]*)""");
+
                         games.Add(new OwnedGameData
                         {
-                            AppId = int.Parse(match.Groups[1].Value),
-                            Name = UnescapeVdfString(match.Groups[2].Value),
-                            HeaderImageUrl = match.Groups[3].Value,
-                            IconUrl = match.Groups[4].Value,
-                            PlaytimeForeverMinutes = int.Parse(match.Groups[5].Value)
+                            AppId = int.Parse(appId),
+                            Name = nameMatch.Success ? UnescapeVdfString(nameMatch.Groups[1].Value) : "",
+                            HeaderImageUrl = headerMatch.Success ? headerMatch.Groups[1].Value : "",
+                            IconUrl = iconMatch.Success ? iconMatch.Groups[1].Value : "",
+                            PlaytimeForeverMinutes = playtimeMatch.Success ? int.Parse(playtimeMatch.Groups[1].Value) : 0,
+                            InstallSalsa = installSalsaMatch.Success && installSalsaMatch.Groups[1].Value == "1",
+                            InstallSteam = installSteamMatch.Success && installSteamMatch.Groups[1].Value == "1",
+                            InstallPath = installPathMatch.Success ? UnescapeVdfString(installPathMatch.Groups[1].Value) : "",
+                            HasShortcut = hasShortcutMatch.Success && hasShortcutMatch.Groups[1].Value == "1",
+                            InstalledDate = installedDateMatch.Success ? UnescapeVdfString(installedDateMatch.Groups[1].Value) : ""
                         });
                     }
                 }
@@ -366,5 +409,187 @@ namespace SalsaNOWGames.Services
             }
             catch { }
         }
+
+        #region Game Data Management
+
+        // Update install status for a game in salsa.vdf
+        public void UpdateGameInstallStatus(string appId, bool salsaInstalled, bool steamInstalled, string installPath = null)
+        {
+            if (_cachedResponse?.Games == null) return;
+
+            var game = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == appId);
+            if (game != null)
+            {
+                game.InstallSalsa = salsaInstalled;
+                game.InstallSteam = steamInstalled;
+                if (installPath != null)
+                    game.InstallPath = installPath;
+                if (salsaInstalled && string.IsNullOrEmpty(game.InstalledDate))
+                    game.InstalledDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                SaveToCache(_cachedResponse);
+            }
+        }
+
+        // Update has_shortcut for a game
+        public void UpdateGameShortcut(string appId, bool hasShortcut)
+        {
+            if (_cachedResponse?.Games == null) return;
+
+            var game = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == appId);
+            if (game != null)
+            {
+                game.HasShortcut = hasShortcut;
+                SaveToCache(_cachedResponse);
+            }
+        }
+
+        // Mark game as installed via Salsa
+        public void MarkGameAsInstalled(string appId, string installPath)
+        {
+            UpdateGameInstallStatus(appId, true, false, installPath);
+        }
+
+        // Mark game as uninstalled (Salsa)
+        public void MarkGameAsUninstalled(string appId)
+        {
+            if (_cachedResponse?.Games == null) return;
+
+            var game = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == appId);
+            if (game != null)
+            {
+                game.InstallSalsa = false;
+                game.InstallPath = "";
+                SaveToCache(_cachedResponse);
+            }
+        }
+
+        // Get game data by appId
+        public OwnedGameData GetGameData(string appId)
+        {
+            return _cachedResponse?.Games?.FirstOrDefault(g => g.AppId.ToString() == appId);
+        }
+
+        // Check if game is installed via Salsa (from salsa.vdf)
+        public bool IsInstalledViaSalsa(string appId)
+        {
+            var game = GetGameData(appId);
+            return game?.InstallSalsa ?? false;
+        }
+
+        // Check if game has shortcut (from salsa.vdf)
+        public bool HasShortcut(string appId)
+        {
+            var game = GetGameData(appId);
+            return game?.HasShortcut ?? false;
+        }
+
+        // Get install path (from salsa.vdf)
+        public string GetInstallPath(string appId)
+        {
+            var game = GetGameData(appId);
+            return game?.InstallPath;
+        }
+
+        // Merge data from games.json into salsa.vdf (one-time migration)
+        // If a game in games.json doesn't exist in salsa.vdf, ADD it
+        public void MergeFromGamesJson(List<InstalledGame> gamesJsonData)
+        {
+            if (_cachedResponse == null || gamesJsonData == null) return;
+            if (_cachedResponse.Games == null)
+                _cachedResponse.Games = new List<OwnedGameData>();
+
+            bool anyChanges = false;
+            foreach (var jsonGame in gamesJsonData)
+            {
+                var vdfGame = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == jsonGame.Id);
+                
+                if (vdfGame == null)
+                {
+                    // Game doesn't exist in salsa.vdf - ADD it from games.json
+                    // Convert old header.jpg format to library_600x900.jpg format
+                    string headerUrl = ConvertToLibrary600x900(jsonGame.HeaderImageUrl);
+                    
+                    var newGame = new OwnedGameData
+                    {
+                        AppId = int.TryParse(jsonGame.Id, out int appId) ? appId : 0,
+                        Name = jsonGame.Name ?? $"App {jsonGame.Id}",
+                        HeaderImageUrl = headerUrl,
+                        IconUrl = "",
+                        PlaytimeForeverMinutes = 0,
+                        InstallSalsa = jsonGame.Install?.Salsa ?? false,
+                        InstallSteam = jsonGame.Install?.Steam ?? false,
+                        InstallPath = jsonGame.InstallPath ?? "",
+                        HasShortcut = jsonGame.HasShortcut,
+                        InstalledDate = jsonGame.InstalledDate ?? ""
+                    };
+                    _cachedResponse.Games.Add(newGame);
+                    _cachedResponse.GameCount = _cachedResponse.Games.Count;
+                    anyChanges = true;
+                }
+                else
+                {
+                    // Game exists - merge/update data
+                    if (jsonGame.Install?.Salsa == true && !vdfGame.InstallSalsa)
+                    {
+                        vdfGame.InstallSalsa = true;
+                        anyChanges = true;
+                    }
+                    if (jsonGame.Install?.Steam == true && !vdfGame.InstallSteam)
+                    {
+                        vdfGame.InstallSteam = true;
+                        anyChanges = true;
+                    }
+                    
+                    // Merge install path
+                    if (!string.IsNullOrEmpty(jsonGame.InstallPath) && string.IsNullOrEmpty(vdfGame.InstallPath))
+                    {
+                        vdfGame.InstallPath = jsonGame.InstallPath;
+                        anyChanges = true;
+                    }
+                    
+                    // Merge shortcut status
+                    if (jsonGame.HasShortcut && !vdfGame.HasShortcut)
+                    {
+                        vdfGame.HasShortcut = true;
+                        anyChanges = true;
+                    }
+                    
+                    // Merge installed date
+                    if (!string.IsNullOrEmpty(jsonGame.InstalledDate) && string.IsNullOrEmpty(vdfGame.InstalledDate))
+                    {
+                        vdfGame.InstalledDate = jsonGame.InstalledDate;
+                        anyChanges = true;
+                    }
+                }
+            }
+
+            if (anyChanges)
+                SaveToCache(_cachedResponse);
+        }
+
+        // Convert old header.jpg URL to library_600x900.jpg format
+        private string ConvertToLibrary600x900(string headerUrl)
+        {
+            if (string.IsNullOrEmpty(headerUrl))
+                return "";
+            
+            // Already in correct format
+            if (headerUrl.Contains("library_600x900"))
+                return headerUrl;
+            
+            // Convert header.jpg to library_600x900.jpg
+            // e.g. https://cdn.akamai.steamstatic.com/steam/apps/2129510/header.jpg - cataire :)
+            // ->   https://cdn.akamai.steamstatic.com/steam/apps/2129510/library_600x900.jpg
+            if (headerUrl.Contains("/header.jpg"))
+                return headerUrl.Replace("/header.jpg", "/library_600x900.jpg");
+            
+            // Also handle capsule images
+            if (headerUrl.Contains("/capsule_"))
+                return Regex.Replace(headerUrl, @"/capsule_\d+x\d+\.jpg", "/library_600x900.jpg");
+            
+            return headerUrl;
+        }
+
+        #endregion
     }
 }

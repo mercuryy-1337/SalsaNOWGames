@@ -17,7 +17,7 @@ A modern WPF Steam game downloader built on top of [DepotDownloader](https://git
 
 ## Roadmap
 
-🚧 **Coming Soon**: Direct Steam Library integration - automatically show all games from your Steam library without searching!
+**Now live**: Direct Steam Library integration - automatically show almost all games from your Steam library without searching!
 
 ## Requirements
 

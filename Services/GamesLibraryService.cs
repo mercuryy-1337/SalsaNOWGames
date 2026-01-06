@@ -11,6 +11,7 @@ namespace SalsaNOWGames.Services
     public class GamesLibraryService
     {
         private readonly string _gamesJsonPath;
+        private readonly SteamLibraryService _steamLibraryService;
         private List<InstalledGame> _games;
 
         public GamesLibraryService()
@@ -18,6 +19,7 @@ namespace SalsaNOWGames.Services
             string salsaNowDirectory = @"I:\Apps\SalsaNOW";
             Directory.CreateDirectory(salsaNowDirectory);
             _gamesJsonPath = Path.Combine(salsaNowDirectory, "games.json");
+            _steamLibraryService = new SteamLibraryService();
             LoadGames();
         }
 
@@ -35,6 +37,13 @@ namespace SalsaNOWGames.Services
                     using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                     {
                         _games = (List<InstalledGame>)serializer.ReadObject(ms) ?? new List<InstalledGame>();
+                    }
+                    
+                    // Ensure all games have Install object
+                    foreach (var game in _games)
+                    {
+                        if (game.Install == null)
+                            game.Install = new InstallStatus();
                     }
                 }
             }
@@ -63,27 +72,25 @@ namespace SalsaNOWGames.Services
             }
         }
 
+        // Add game installed via Salsa
         public void AddGame(GameInfo gameInfo, string installPath)
         {
-            // Check if game already exists
             var existingGame = _games.FirstOrDefault(g => g.Id == gameInfo.AppId);
             if (existingGame != null)
             {
-                // Update existing game
                 existingGame.Name = gameInfo.Name;
-                existingGame.IsInstalled = true;
+                existingGame.Install.Salsa = true;
                 existingGame.HeaderImageUrl = gameInfo.HeaderImageUrl;
                 existingGame.InstallPath = installPath;
                 existingGame.InstalledDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             }
             else
             {
-                // Add new game
                 _games.Add(new InstalledGame
                 {
                     Id = gameInfo.AppId,
                     Name = gameInfo.Name,
-                    IsInstalled = true,
+                    Install = new InstallStatus { Salsa = true, Steam = false },
                     HeaderImageUrl = gameInfo.HeaderImageUrl,
                     InstallPath = installPath,
                     InstalledDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
@@ -102,19 +109,37 @@ namespace SalsaNOWGames.Services
             }
         }
 
+        // Mark Salsa installation as uninstalled
         public void MarkAsUninstalled(string appId)
         {
             var game = _games.FirstOrDefault(g => g.Id == appId);
             if (game != null)
             {
-                game.IsInstalled = false;
+                game.Install.Salsa = false;
                 SaveGames();
             }
         }
 
+        // Checks if game is installed (via Steam OR Salsa)
         public bool IsGameInstalled(string appId)
         {
-            return _games.Any(g => g.Id == appId && g.IsInstalled);
+            var game = _games.FirstOrDefault(g => g.Id == appId);
+            bool salsaInstalled = game?.Install?.Salsa ?? false;
+            bool steamInstalled = _steamLibraryService.IsInstalledViaSteam(appId);
+            return salsaInstalled || steamInstalled;
+        }
+
+        // Checks if specifically installed via Salsa
+        public bool IsInstalledViaSalsa(string appId)
+        {
+            var game = _games.FirstOrDefault(g => g.Id == appId);
+            return game?.Install?.Salsa ?? false;
+        }
+
+        // Checks if specifically installed via Steam
+        public bool IsInstalledViaSteam(string appId)
+        {
+            return _steamLibraryService.IsInstalledViaSteam(appId);
         }
 
         public InstalledGame GetGame(string appId)
@@ -124,7 +149,59 @@ namespace SalsaNOWGames.Services
 
         public List<InstalledGame> GetInstalledGames()
         {
-            return _games.Where(g => g.IsInstalled).ToList();
+            // Refresh Steam library scan
+            _steamLibraryService.Refresh();
+            
+            // Return games that are installed via either method
+            return _games.Where(g => g.Install?.Salsa == true || 
+                                     _steamLibraryService.IsInstalledViaSteam(g.Id)).ToList();
+        }
+
+        // Gets the install path - prioritizes Salsa path, falls back to Steam
+        public string GetInstallPath(string appId)
+        {
+            var game = _games.FirstOrDefault(g => g.Id == appId);
+            if (game?.Install?.Salsa == true && !string.IsNullOrEmpty(game.InstallPath))
+                return game.InstallPath;
+            
+            return _steamLibraryService.GetSteamInstallPath(appId);
+        }
+
+        // Gets install source description
+        public string GetInstallSource(string appId)
+        {
+            var game = _games.FirstOrDefault(g => g.Id == appId);
+            bool salsa = game?.Install?.Salsa ?? false;
+            bool steam = _steamLibraryService.IsInstalledViaSteam(appId);
+            
+            if (salsa && steam) return "Steam + Salsa";
+            if (salsa) return "Salsa";
+            if (steam) return "Steam";
+            return "Not installed";
+        }
+
+        // Refresh Steam library detection
+        public void RefreshSteamLibrary()
+        {
+            _steamLibraryService.Refresh();
+        }
+
+        // Check if game has a shortcut created
+        public bool HasShortcut(string appId)
+        {
+            var game = _games.FirstOrDefault(g => g.Id == appId);
+            return game?.HasShortcut ?? false;
+        }
+
+        // Set the shortcut flag for a game
+        public void SetHasShortcut(string appId, bool hasShortcut)
+        {
+            var game = _games.FirstOrDefault(g => g.Id == appId);
+            if (game != null)
+            {
+                game.HasShortcut = hasShortcut;
+                SaveGames();
+            }
         }
     }
 }

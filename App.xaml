@@ -133,11 +133,32 @@
             </Setter>
         </Style>
 
-        <!-- Scrollbar Style -->
-        <Style TargetType="ScrollBar">
+        <!-- Minimalist Scrollbar Style -->
+        <Style x:Key="MinimalScrollBar" TargetType="ScrollBar">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Width" Value="10"/>
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid>
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#4C7799" CornerRadius="3" Margin="1"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+        
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource MinimalScrollBar}"/>
 
     </Application.Resources>
 </Application>

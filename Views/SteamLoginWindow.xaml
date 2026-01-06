@@ -66,8 +66,19 @@
                 <CheckBox x:Name="RememberCheckBox" 
                           IsChecked="True"
                           Foreground="#8F98A0"
-                          Margin="0,0,0,25">
+                          Margin="0,0,0,10">
                     <TextBlock Text="Remember my credentials" FontSize="13" Foreground="#8F98A0"/>
+                </CheckBox>
+                
+                <!-- No Mobile (manual code entry) -->
+                <CheckBox x:Name="NoMobileCheckBox" 
+                          IsChecked="False"
+                          Foreground="#8F98A0"
+                          Margin="0,0,0,25">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="Use manual code entry (no mobile app)" FontSize="13" Foreground="#8F98A0"/>
+                        <TextBlock Text="Enter Steam Guard code manually instead of app approval" FontSize="11" Foreground="#6F7880" Margin="0,2,0,0"/>
+                    </StackPanel>
                 </CheckBox>
                 
                 <!-- Error Message -->

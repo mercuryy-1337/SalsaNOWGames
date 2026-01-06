@@ -26,6 +26,9 @@ namespace SalsaNOWGames.Services
         
         // Debug mode for verbose logging to output window
         public bool DebugMode { get; set; } = false;
+        
+        // Track if current download is using no-mobile mode (manual code entry)
+        public bool IsNoMobileMode { get; private set; } = false;
 
         public event Action<string> OnOutputReceived;
         public event Action<double> OnProgressChanged;
@@ -33,6 +36,7 @@ namespace SalsaNOWGames.Services
         public event Action<string> OnSteamGuardRequired;
         public event Action<bool, int> OnPreallocatingChanged;
         public event Action<bool> OnCleanupInProgress;
+        public event Action<bool> OnNoMobileModeChanged;
 
         public DepotDownloaderService(string installDirectory = null)
         {
@@ -87,7 +91,7 @@ namespace SalsaNOWGames.Services
             }
         }
 
-        public async Task<bool> DownloadGameAsync(string appId, string username, string password)
+        public async Task<bool> DownloadGameAsync(string appId, string username, string password, bool noMobile = false)
         {
             try
             {
@@ -107,11 +111,18 @@ namespace SalsaNOWGames.Services
                 _isPreallocating = false;
                 _preallocFileCount = 0;
                 _lastOutputTime = DateTime.MinValue;
+                
+                // Track no-mobile mode and notify UI
+                IsNoMobileMode = noMobile;
+                OnNoMobileModeChanged?.Invoke(noMobile);
+
+                // Build arguments - include -no-mobile if user wants manual code entry
+                string noMobileArg = noMobile ? " -no-mobile" : "";
 
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = _depotDownloaderPath,
-                    Arguments = $"-app \"{appId}\" -username \"{username}\" -password \"{password}\" -remember-password -os windows -dir \"{gameDirectory}\"",
+                    Arguments = $"-app \"{appId}\" -username \"{username}\" -password \"{password}\" -remember-password -os windows{noMobileArg} -dir \"{gameDirectory}\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -156,9 +167,21 @@ namespace SalsaNOWGames.Services
                     }
                     
                     // Check for Steam Guard prompt - always process immediately
-                    if (e.Data.Contains("STEAM GUARD") || e.Data.Contains("two-factor") || 
-                        e.Data.Contains("2FA") || e.Data.Contains("Please enter") ||
-                        e.Data.Contains("Enter the current code"))
+                    // Catch various Steam Guard/2FA prompts from DepotDownloader (need to change this soon, like real soon)
+                    string dataLower = e.Data.ToLowerInvariant();
+                    if (e.Data.Contains("STEAM GUARD") || 
+                        e.Data.Contains("two-factor") || 
+                        e.Data.Contains("2FA") || 
+                        e.Data.Contains("Please enter") ||
+                        e.Data.Contains("Enter the current code") ||
+                        dataLower.Contains("steam guard") ||
+                        dataLower.Contains("authenticator") ||
+                        dataLower.Contains("verification code") ||
+                        dataLower.Contains("enter code") ||
+                        dataLower.Contains("enter your code") ||
+                        dataLower.Contains("mobile authenticator") ||
+                        dataLower.Contains("email code") ||
+                        (dataLower.Contains("code") && dataLower.Contains("enter")))
                     {
                         OnOutputReceived?.Invoke(e.Data);
                         OnSteamGuardRequired?.Invoke(e.Data);
@@ -175,7 +198,11 @@ namespace SalsaNOWGames.Services
                                        e.Data.Contains("Error") ||
                                        e.Data.Contains("error") ||
                                        e.Data.Contains("Failed") ||
-                                       e.Data.Contains("failed");
+                                       e.Data.Contains("failed") ||
+                                       e.Data.Contains("Logging") ||
+                                       e.Data.Contains("logged") ||
+                                       e.Data.Contains("Got session") ||
+                                       e.Data.Contains("Connecting");
                     
                     if (isImportant)
                     {
@@ -199,6 +226,18 @@ namespace SalsaNOWGames.Services
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
+                        // Check stderr for Steam Guard prompts too (some versions output there)
+                        string dataLower = e.Data.ToLowerInvariant();
+                        if (dataLower.Contains("steam guard") ||
+                            dataLower.Contains("two-factor") ||
+                            dataLower.Contains("2fa") ||
+                            dataLower.Contains("enter") && dataLower.Contains("code") ||
+                            dataLower.Contains("authenticator"))
+                        {
+                            OnOutputReceived?.Invoke(e.Data);
+                            OnSteamGuardRequired?.Invoke(e.Data);
+                            return;
+                        }
                         OnOutputReceived?.Invoke($"[Error] {e.Data}");
                     }
                 };

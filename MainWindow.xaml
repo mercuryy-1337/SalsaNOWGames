@@ -13,13 +13,14 @@
     
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
+        <converters:BoolOrToVisibilityConverter x:Key="BoolOrToVisibility"/>
         <converters:InverseBoolConverter x:Key="InverseBool"/>
         
         <!-- Game Card Style -->
         <Style x:Key="GameCard" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CardBrush}"/>
             <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Margin" Value="8"/>
+            <Setter Property="Margin" Value="6"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
@@ -242,58 +243,139 @@
                     </StackPanel>
                     
                     <!-- Game Grid -->
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding InstalledGames}">
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding InstalledGames}" x:Name="LibraryItemsControl">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel/>
+                                    <UniformGrid Columns="5" HorizontalAlignment="Stretch"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource GameCard}" Width="280">
+                                    <Border Style="{StaticResource GameCard}" MinWidth="180" MaxWidth="250">
                                         <Grid>
                                             <Grid.RowDefinitions>
-                                                <RowDefinition Height="130"/>
-                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="300"/>
+                                                <RowDefinition Height="110"/>
                                             </Grid.RowDefinitions>
                                             
-                                            <!-- Game Image -->
+                                            <!-- Game Image (600x900 portrait) -->
                                             <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True">
                                                 <Image Source="{Binding HeaderImageUrl}" 
                                                        Stretch="UniformToFill"/>
                                             </Border>
                                             
                                             <!-- Game Info -->
-                                            <StackPanel Grid.Row="1" Margin="15">
-                                                <TextBlock Text="{Binding Name}" 
-                                                           FontSize="14" 
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource TextBrush}"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="{Binding SizeOnDiskFormatted}" 
-                                                           FontSize="12"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           Margin="0,4,0,10"/>
+                                            <Grid Grid.Row="1" Margin="10">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="*"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
                                                 
-                                                <!-- Delete Button (shown when installed) -->
-                                                <Button Style="{StaticResource DangerButton}"
-                                                        Command="{Binding DataContext.DeleteGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                        CommandParameter="{Binding}"
-                                                        Padding="12,6"
-                                                        FontSize="12"
-                                                        Content="🗑️ Delete"
-                                                        Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}}"/>
+                                                <StackPanel Grid.Row="0">
+                                                    <TextBlock Text="{Binding Name}" 
+                                                               FontSize="13" 
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               TextWrapping="Wrap"
+                                                               MaxHeight="36"/>
+                                                    <TextBlock Text="{Binding SizeOnDiskFormatted}" 
+                                                               FontSize="11"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                                               Margin="0,4,0,0"/>
+                                                </StackPanel>
                                                 
-                                                <!-- Download Button (shown when not installed) -->
-                                                <Button Style="{StaticResource ModernButton}"
-                                                        Command="{Binding DataContext.DownloadGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                        CommandParameter="{Binding}"
-                                                        Padding="12,6"
-                                                        FontSize="12"
-                                                        Content="⬇️ Download"
-                                                        Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}"/>
-                                            </StackPanel>
+                                                <!-- Buttons - Fixed at bottom -->
+                                                <Grid Grid.Row="1">
+                                                    <!-- Buttons when installed -->
+                                                    <Grid Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="8"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        
+                                                        <!-- Steam Play Button (for Steam installs) -->
+                                                        <Button Grid.Column="0"
+                                                                Style="{StaticResource ModernButton}"
+                                                                Padding="0,10"
+                                                                FontSize="14"
+                                                                Content="▶"
+                                                                IsEnabled="False"
+                                                                ToolTip="Launch via Steam (coming soon)"
+                                                                Visibility="{Binding IsInstalledViaSteam, Converter={StaticResource BoolToVisibility}}"/>
+                                                        
+                                                        <!-- Open Steam Library Button (for Salsa installs with shortcut) -->
+                                                        <Button Grid.Column="0"
+                                                                Command="{Binding DataContext.OpenSteamLibraryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"
+                                                                Padding="0,10"
+                                                                FontSize="12"
+                                                                Content="🎮"
+                                                                IsEnabled="False"
+                                                                ToolTip="Open Steam Library (coming soon)">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding IsInstalledViaSalsa}" Value="True"/>
+                                                                                <Condition Binding="{Binding HasShortcut}" Value="True"/>
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </MultiDataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        
+                                                        <!-- Create Shortcut Button (for Salsa installs without shortcut) -->
+                                                        <Button Grid.Column="0"
+                                                                Command="{Binding DataContext.CreateShortcutCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"
+                                                                Padding="0,10"
+                                                                FontSize="12"
+                                                                Content="🔗"
+                                                                IsEnabled="False"
+                                                                ToolTip="Create Steam Shortcut (coming soon)">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding IsInstalledViaSalsa}" Value="True"/>
+                                                                                <Condition Binding="{Binding HasShortcut}" Value="False"/>
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </MultiDataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        
+                                                        <!-- Delete Button -->
+                                                        <Button Grid.Column="2"
+                                                                Style="{StaticResource DangerButton}"
+                                                                Command="{Binding DataContext.DeleteGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"
+                                                                Padding="0,10"
+                                                                FontSize="14"
+                                                                Content="🗑"/>
+                                                    </Grid>
+                                                    
+                                                    <!-- Download Button (shown when not installed) -->
+                                                    <Button Style="{StaticResource ModernButton}"
+                                                            Command="{Binding DataContext.DownloadGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}"
+                                                            Padding="0,10"
+                                                            FontSize="12"
+                                                            Content="⬇ Download"
+                                                            Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}"/>
+                                                </Grid>
+                                            </Grid>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -361,7 +443,7 @@
                     </Grid>
                     
                     <!-- Search Results -->
-                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding SearchResults}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -370,10 +452,10 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource GameCard}" Width="280">
+                                    <Border Style="{StaticResource GameCard}" Width="300">
                                         <Grid>
                                             <Grid.RowDefinitions>
-                                                <RowDefinition Height="130"/>
+                                                <RowDefinition Height="140"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             
@@ -381,14 +463,14 @@
                                                 <Image Source="{Binding HeaderImageUrl}" Stretch="UniformToFill"/>
                                             </Border>
                                             
-                                            <StackPanel Grid.Row="1" Margin="15">
+                                            <StackPanel Grid.Row="1" Margin="12">
                                                 <TextBlock Text="{Binding Name}" 
                                                            FontSize="14" 
                                                            FontWeight="SemiBold"
                                                            Foreground="{StaticResource TextBrush}"
                                                            TextTrimming="CharacterEllipsis"/>
                                                 <TextBlock Text="{Binding AppId, StringFormat='App ID: {0}'}" 
-                                                           FontSize="12"
+                                                           FontSize="11"
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            Margin="0,4,0,10"/>
                                                 
@@ -403,7 +485,7 @@
                                                         <TextBlock>
                                                             <TextBlock.Style>
                                                                 <Style TargetType="TextBlock">
-                                                                    <Setter Property="Text" Value="⬇️ Download"/>
+                                                                    <Setter Property="Text" Value="⬇ Download"/>
                                                                     <Style.Triggers>
                                                                         <DataTrigger Binding="{Binding IsInstalled}" Value="True">
                                                                             <Setter Property="Text" Value="✓ Installed"/>
@@ -518,11 +600,16 @@
                                                  Foreground="{StaticResource AccentBrush}"/>
                                 </StackPanel>
                                 
-                                <Button Content="Cancel" 
-                                        Style="{StaticResource DangerButton}"
-                                        Command="{Binding CancelDownloadCommand}"
-                                        Grid.Column="2"
-                                        VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="🔐 Enter Code" 
+                                            Style="{StaticResource SecondaryButton}"
+                                            Command="{Binding EnterSteamGuardCommand}"
+                                            Margin="0,0,10,0"
+                                            ToolTip="Manually enter Steam Guard code"/>
+                                    <Button Content="Cancel" 
+                                            Style="{StaticResource DangerButton}"
+                                            Command="{Binding CancelDownloadCommand}"/>
+                                </StackPanel>
                             </Grid>
                         </Border>
                         
