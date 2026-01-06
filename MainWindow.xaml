@@ -555,6 +555,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     
                     <TextBlock Text="{Binding StatusMessage}" 
@@ -562,10 +563,17 @@
                                FontSize="13"
                                Grid.Column="0"/>
                     
+                    <TextBlock Text="{Binding AppVersion}" 
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13"
+                               Opacity="0.6"
+                               Margin="0,0,20,0"
+                               Grid.Column="1"/>
+                    
                     <TextBlock Text="{Binding DriveUsage}" 
                                Foreground="{StaticResource TextSecondaryBrush}"
                                FontSize="13"
-                               Grid.Column="1"/>
+                               Grid.Column="2"/>
                 </Grid>
             </Border>
         </Grid>

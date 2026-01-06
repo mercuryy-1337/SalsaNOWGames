@@ -257,6 +257,8 @@ namespace SalsaNOWGames.ViewModels
             set => SetProperty(ref _driveUsage, value);
         }
 
+        public string AppVersion => $"v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3)}";
+
         public string CurrentView
         {
             get => _currentView;
