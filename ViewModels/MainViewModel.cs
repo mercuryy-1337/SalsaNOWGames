@@ -98,6 +98,17 @@ namespace SalsaNOWGames.ViewModels
                     }
                 });
             };
+            
+            _depotDownloaderService.OnPreallocatingChanged += (isPreallocating, fileCount) =>
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (SelectedGame != null && isPreallocating)
+                    {
+                        SelectedGame.DownloadStatus = "Pre-allocating files...";
+                    }
+                });
+            };
 
             _depotDownloaderService.OnDownloadComplete += (success, message) =>
             {

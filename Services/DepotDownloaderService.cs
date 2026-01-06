@@ -15,47 +15,29 @@ namespace SalsaNOWGames.Services
         private readonly string _salsaNowDirectory;
         private readonly string _depotDownloaderPath;
         private readonly string _gamesDirectory;
-        private readonly string _logFilePath;
         private Process _currentProcess;
         private CancellationTokenSource _cancellationTokenSource;
-        private StreamWriter _logWriter;
         private string _currentDownloadAppId;
+        
+        // Throttle output to prevent UI overhead affecting download speed
+        private DateTime _lastOutputTime = DateTime.MinValue;
+        private int _preallocFileCount = 0;
+        private bool _isPreallocating = false;
+        
+        // Debug mode for verbose logging to output window
+        public bool DebugMode { get; set; } = false;
 
         public event Action<string> OnOutputReceived;
         public event Action<double> OnProgressChanged;
         public event Action<bool, string> OnDownloadComplete;
         public event Action<string> OnSteamGuardRequired;
+        public event Action<bool, int> OnPreallocatingChanged;
 
         public DepotDownloaderService(string installDirectory = null)
         {
             _salsaNowDirectory = @"I:\Apps\SalsaNOW";
             _depotDownloaderPath = Path.Combine(_salsaNowDirectory, "DepotDownloader", "DepotDownloader.exe");
             _gamesDirectory = installDirectory ?? Path.Combine(_salsaNowDirectory, "DepotDownloader", "Games");
-            _logFilePath = Path.Combine(_salsaNowDirectory, "SalsaNOWGames.log");
-            
-            // Initialize log file
-            InitializeLogFile();
-        }
-
-        private void InitializeLogFile()
-        {
-            try
-            {
-                Directory.CreateDirectory(_salsaNowDirectory);
-                _logWriter = new StreamWriter(_logFilePath, true) { AutoFlush = true };
-                LogToFile($"=== SalsaNOW Games Started at {DateTime.Now} ===");
-            }
-            catch { }
-        }
-
-        public void LogToFile(string message)
-        {
-            try
-            {
-                string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                _logWriter?.WriteLine($"[{timestamp}] {message}");
-            }
-            catch { }
         }
 
         public string GamesDirectory => _gamesDirectory;
@@ -108,7 +90,6 @@ namespace SalsaNOWGames.Services
         {
             try
             {
-                LogToFile($"Starting download for AppID: {appId}, User: {username}");
                 await EnsureDepotDownloaderInstalledAsync();
 
                 string gameDirectory = Path.Combine(_gamesDirectory, appId);
@@ -120,6 +101,11 @@ namespace SalsaNOWGames.Services
                 // Track current download for cleanup on cancel
                 _currentDownloadAppId = appId;
                 _cancellationTokenSource = new CancellationTokenSource();
+                
+                // Reset tracking state
+                _isPreallocating = false;
+                _preallocFileCount = 0;
+                _lastOutputTime = DateTime.MinValue;
 
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
@@ -136,27 +122,82 @@ namespace SalsaNOWGames.Services
                 
                 _currentProcess.OutputDataReceived += (s, e) =>
                 {
-                    if (!string.IsNullOrEmpty(e.Data))
+                    if (string.IsNullOrEmpty(e.Data)) return;
+                    
+                    // Handle pre-allocation - heavily throttled
+                    if (e.Data.StartsWith("Pre-allocating"))
                     {
-                        LogToFile($"[OUT] {e.Data}");
-                        OnOutputReceived?.Invoke(e.Data);
-                        ParseProgress(e.Data);
+                        _preallocFileCount++;
                         
-                        // Check for Steam Guard prompt
-                        if (e.Data.Contains("STEAM GUARD") || e.Data.Contains("two-factor") || 
-                            e.Data.Contains("2FA") || e.Data.Contains("Please enter") ||
-                            e.Data.Contains("Enter the current code"))
+                        // Only update UI every 1 second during pre-allocation
+                        var now = DateTime.Now;
+                        if ((now - _lastOutputTime).TotalMilliseconds >= 1000)
                         {
-                            LogToFile("Steam Guard code required!");
-                            OnSteamGuardRequired?.Invoke(e.Data);
+                            _lastOutputTime = now;
+                            OnOutputReceived?.Invoke($"Pre-allocating... ({_preallocFileCount} files)");
+                        }
+                        
+                        if (!_isPreallocating)
+                        {
+                            _isPreallocating = true;
+                            OnPreallocatingChanged?.Invoke(true, 0);
+                        }
+                        return;
+                    }
+                    
+                    // End of pre-allocation phase
+                    if (_isPreallocating)
+                    {
+                        OnOutputReceived?.Invoke($"Pre-allocation complete. ({_preallocFileCount} files)");
+                        _isPreallocating = false;
+                        _preallocFileCount = 0;
+                        OnPreallocatingChanged?.Invoke(false, 0);
+                    }
+                    
+                    // Check for Steam Guard prompt - always process immediately
+                    if (e.Data.Contains("STEAM GUARD") || e.Data.Contains("two-factor") || 
+                        e.Data.Contains("2FA") || e.Data.Contains("Please enter") ||
+                        e.Data.Contains("Enter the current code"))
+                    {
+                        OnOutputReceived?.Invoke(e.Data);
+                        OnSteamGuardRequired?.Invoke(e.Data);
+                        return;
+                    }
+                    
+                    // Check for progress - always parse but throttle UI updates
+                    bool hasProgress = ParseProgress(e.Data);
+                    
+                    // Important messages to always show
+                    bool isImportant = e.Data.Contains("Downloading depot") ||
+                                       e.Data.Contains("Download complete") ||
+                                       e.Data.Contains("Total downloaded") ||
+                                       e.Data.Contains("Error") ||
+                                       e.Data.Contains("error") ||
+                                       e.Data.Contains("Failed") ||
+                                       e.Data.Contains("failed");
+                    
+                    if (isImportant)
+                    {
+                        OnOutputReceived?.Invoke(e.Data);
+                        return;
+                    }
+                    
+                    // In debug mode, show everything (throttled)
+                    if (DebugMode)
+                    {
+                        var now = DateTime.Now;
+                        if ((now - _lastOutputTime).TotalMilliseconds >= 100)
+                        {
+                            _lastOutputTime = now;
+                            OnOutputReceived?.Invoke(e.Data);
                         }
                     }
                 };
+                
                 _currentProcess.ErrorDataReceived += (s, e) =>
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        LogToFile($"[ERR] {e.Data}");
                         OnOutputReceived?.Invoke($"[Error] {e.Data}");
                     }
                 };
@@ -165,18 +206,15 @@ namespace SalsaNOWGames.Services
                 _currentProcess.BeginOutputReadLine();
                 _currentProcess.BeginErrorReadLine();
 
-                LogToFile("Process started, waiting for completion...");
                 await Task.Run(() => _currentProcess?.WaitForExit(), _cancellationTokenSource.Token);
 
                 // Check if process was cancelled/killed
                 if (_currentProcess == null)
                 {
-                    LogToFile("Download was cancelled.");
                     return false;
                 }
 
                 bool success = _currentProcess.ExitCode == 0;
-                LogToFile($"Download finished. Exit code: {_currentProcess.ExitCode}, Success: {success}");
                 OnDownloadComplete?.Invoke(success, success ? "Download complete!" : "Download failed.");
                 
                 _currentProcess = null;
@@ -188,7 +226,6 @@ namespace SalsaNOWGames.Services
             }
             catch (OperationCanceledException)
             {
-                LogToFile("Download cancelled by user.");
                 // Don't clear _currentDownloadAppId here - CancelDownload will handle cleanup
                 OnDownloadComplete?.Invoke(false, "Download cancelled.");
                 return false;
@@ -198,10 +235,8 @@ namespace SalsaNOWGames.Services
                 // Ignore null reference errors from cancelled downloads
                 if (_currentProcess == null)
                 {
-                    LogToFile("Download was cancelled.");
                     return false;
                 }
-                LogToFile($"Error during download: {ex.Message}");
                 OnOutputReceived?.Invoke($"Error: {ex.Message}");
                 OnDownloadComplete?.Invoke(false, ex.Message);
                 return false;
@@ -215,20 +250,13 @@ namespace SalsaNOWGames.Services
             {
                 try
                 {
-                    LogToFile($"Submitting Steam Guard code: {code}");
                     _currentProcess.StandardInput.WriteLine(code);
                     _currentProcess.StandardInput.Flush();
-                    LogToFile("Steam Guard code submitted successfully.");
                 }
                 catch (Exception ex)
                 {
-                    LogToFile($"Error submitting Steam Guard code: {ex.Message}");
                     OnOutputReceived?.Invoke($"Error submitting code: {ex.Message}");
                 }
-            }
-            else
-            {
-                LogToFile("Cannot submit Steam Guard code - no active process.");
             }
         }
 
@@ -331,20 +359,15 @@ namespace SalsaNOWGames.Services
                     string gameDirectory = Path.Combine(_gamesDirectory, appIdToClean);
                     if (Directory.Exists(gameDirectory))
                     {
-                        LogToFile($"Cleaning up cancelled download: {gameDirectory}");
                         Directory.Delete(gameDirectory, true);
-                        LogToFile($"Successfully deleted partial download for AppID: {appIdToClean}");
                     }
                 }
-                catch (Exception ex)
-                {
-                    LogToFile($"Failed to clean up partial download: {ex.Message}");
-                }
+                catch { }
             }
             _currentDownloadAppId = null;
         }
 
-        private void ParseProgress(string output)
+        private bool ParseProgress(string output)
         {
             try
             {
@@ -354,9 +377,11 @@ namespace SalsaNOWGames.Services
                 if (match.Success && double.TryParse(match.Groups[1].Value, out double progress))
                 {
                     OnProgressChanged?.Invoke(progress);
+                    return true;
                 }
             }
             catch { }
+            return false;
         }
 
         public string GetGameInstallPath(string appId)
