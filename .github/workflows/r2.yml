@@ -10,13 +10,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1.3
+        uses: microsoft/setup-msbuild@v2
 
       - name: Setup NuGet
-        uses: NuGet/setup-nuget@v1
+        uses: NuGet/setup-nuget@v2
 
       - name: Restore NuGet packages
         run: nuget restore SalsaNOWGames.sln
@@ -25,13 +25,13 @@ jobs:
         run: msbuild SalsaNOWGames.sln /p:Configuration=Release /p:Platform="Any CPU"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: SalsaNOWGames
           path: bin/Release/SalsaNOWGames.exe
 
       - name: Install Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
 
