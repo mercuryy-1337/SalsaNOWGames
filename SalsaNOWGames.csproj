@@ -76,6 +76,8 @@
     <Compile Include="Services\SteamAuthService.cs" />
     <Compile Include="Services\SteamVdfService.cs" />
     <Compile Include="Services\SettingsService.cs" />
+    <Compile Include="Services\UpdateService.cs" />
+    <Compile Include="Services\UpdaterService.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />
     <Compile Include="ViewModels\ViewModelBase.cs" />
     <Compile Include="Views\SteamGuardDialog.xaml.cs">
