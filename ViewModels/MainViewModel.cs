@@ -19,10 +19,12 @@ namespace SalsaNOWGames.ViewModels
         private readonly DepotDownloaderService _depotDownloaderService;
         private readonly SteamAuthService _steamAuthService;
         private readonly GamesLibraryService _gamesLibraryService;
+        private readonly SteamVdfService _steamVdfService;
 
         // Login state
         private bool _isLoggedIn;
-        private string _steamUsername;
+        private string _steamUsername;        // Actual username for API calls
+        private string _displayName;          // PersonaName for UI display
         private SteamSession _currentSession;
         private string _avatarUrl;
         private string _loginError;
@@ -51,6 +53,7 @@ namespace SalsaNOWGames.ViewModels
             _depotDownloaderService = new DepotDownloaderService(_settingsService.Settings.InstallDirectory);
             _steamAuthService = new SteamAuthService();
             _gamesLibraryService = new GamesLibraryService();
+            _steamVdfService = new SteamVdfService();
 
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
@@ -167,10 +170,18 @@ namespace SalsaNOWGames.ViewModels
             set => SetProperty(ref _isLoggedIn, value);
         }
 
-        public string SteamUsername
+        // Display name shown in UI (PersonaName from Steam)
+        public string DisplayName
+        {
+            get => _displayName;
+            set => SetProperty(ref _displayName, value);
+        }
+
+        // Internal username for API calls (not shown in UI)
+        private string SteamUsername
         {
             get => _steamUsername;
-            set => SetProperty(ref _steamUsername, value);
+            set => _steamUsername = value;
         }
 
         public SteamSession CurrentSession
@@ -307,12 +318,13 @@ namespace SalsaNOWGames.ViewModels
                 
                 CurrentSession = savedSession;
                 IsLoggedIn = true;
-                SteamUsername = savedSession.Username ?? "Steam User";
+                SteamUsername = savedSession.Username;
+                DisplayName = _steamVdfService.GetPersonaName(savedSession.Username) ?? "Steam User";
                 AvatarUrl = savedSession.AvatarUrl;
                 _steamPassword = restoredPassword;
                 
                 CurrentView = "library";
-                StatusMessage = $"Welcome back, {SteamUsername}!";
+                StatusMessage = $"Welcome back, {DisplayName}!";
                 _ = RefreshInstalledGamesAsync();
                 return;
             }
@@ -322,6 +334,7 @@ namespace SalsaNOWGames.ViewModels
             {
                 IsLoggedIn = true;
                 SteamUsername = _settingsService.Settings.SteamUsername;
+                DisplayName = _steamVdfService.GetPersonaName(_settingsService.Settings.SteamUsername) ?? "Steam User";
                 AvatarUrl = _settingsService.Settings.AvatarUrl;
                 CurrentView = "library";
                 _ = RefreshInstalledGamesAsync();
@@ -363,8 +376,9 @@ namespace SalsaNOWGames.ViewModels
                     // Update UI
                     IsLoggedIn = true;
                     SteamUsername = loginWindow.Username;
+                    DisplayName = _steamVdfService.GetPersonaName(loginWindow.Username) ?? loginWindow.Username;
                     CurrentView = "library";
-                    StatusMessage = $"Welcome, {SteamUsername}!";
+                    StatusMessage = $"Welcome, {DisplayName}!";
                     await RefreshInstalledGamesAsync();
                 }
                 else
@@ -389,6 +403,7 @@ namespace SalsaNOWGames.ViewModels
             CurrentSession = null;
             IsLoggedIn = false;
             SteamUsername = "";
+            DisplayName = "";
             AvatarUrl = "";
             CurrentView = "login";
             InstalledGames.Clear();

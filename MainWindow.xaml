@@ -207,7 +207,7 @@
                     
                     <!-- User Info -->
                     <StackPanel Orientation="Horizontal" Grid.Column="2">
-                        <TextBlock Text="{Binding SteamUsername}" 
+                        <TextBlock Text="{Binding DisplayName}" 
                                    Foreground="{StaticResource TextBrush}"
                                    VerticalAlignment="Center"
                                    Margin="0,0,15,0"/>
@@ -463,7 +463,7 @@
                                 <TextBlock Text="Logged in as " 
                                            FontSize="14" 
                                            Foreground="{StaticResource TextBrush}"/>
-                                <TextBlock Text="{Binding SteamUsername}" 
+                                <TextBlock Text="{Binding DisplayName}" 
                                            FontSize="14" 
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}"/>
