@@ -54,23 +54,37 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
 
-      - name: Generate changelog from commits
+      - name: Extract changelog for current version
         id: changelog
         shell: pwsh
         run: |
-          $lastTag = git describe --tags --abbrev=0 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            $commits = git log --pretty=format:"- %s" -10
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $content = Get-Content -Path CHANGELOG.md -Raw
+          
+          # Extract section for current version
+          # Pattern matches from [version] to the next [version] or end of file
+          $pattern = "(?s)## \[$version\].*?(?=## \[|---|\z)"
+          $match = [regex]::Match($content, $pattern)
+          
+          if ($match.Success) {
+            $changelog = $match.Value.Trim()
           } else {
-            $commits = git log --pretty=format:"- %s" "$lastTag..HEAD"
+            # Fallback to commit messages if version not found in changelog
+            $lastTag = git describe --tags --abbrev=0 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              $commits = git log --pretty=format:"- %s" -10
+            } else {
+              $commits = git log --pretty=format:"- %s" "$lastTag..HEAD"
+            }
+            $changelog = $commits -join "`n"
+            if ([string]::IsNullOrEmpty($changelog)) {
+              $changelog = "- Release v$version"
+            }
           }
-          $changelog = $commits -join "`n"
-          if ([string]::IsNullOrEmpty($changelog)) {
-            $changelog = "- Initial release"
-          }
+          
           # Write to file to handle multiline
           $changelog | Out-File -FilePath changelog.txt -Encoding utf8
-          echo "Generated changelog"
+          echo "Generated changelog for v$version"
 
       - name: Create source code archive
         shell: pwsh
