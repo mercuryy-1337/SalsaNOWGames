@@ -85,14 +85,22 @@ namespace SalsaNOWGames.Services
         public string GetSteamId64(string accountName)
         {
             if (string.IsNullOrEmpty(accountName))
+            {
+                LogService.LogWarning("GetSteamId64: accountName is null or empty");
                 return null;
+            }
 
             try
             {
                 if (!File.Exists(_loginUsersPath))
+                {
+                    LogService.LogWarning($"GetSteamId64: loginusers.vdf not found at {_loginUsersPath}");
+                    LogService.LogWarning("Steam may not be installed or installed in a non-standard location");
                     return null;
+                }
 
                 string content = File.ReadAllText(_loginUsersPath);
+                LogService.Log($"GetSteamId64: Searching for account '{accountName}' in loginusers.vdf ({content.Length} bytes)");
                 
                 // Find the user block that contains the matching AccountName
                 // The Steam ID is the key of the user block (the 17-digit number)
@@ -101,21 +109,27 @@ namespace SalsaNOWGames.Services
                     RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
                 var matches = userBlockPattern.Matches(content);
+                LogService.Log($"GetSteamId64: Found {matches.Count} user blocks in loginusers.vdf");
                 
                 foreach (Match match in matches)
                 {
                     string steamId64 = match.Groups[1].Value;
                     string foundAccountName = match.Groups[2].Value;
+                    LogService.Log($"GetSteamId64: Checking account '{foundAccountName}' (SteamID: {steamId64})");
                     
                     if (foundAccountName.Equals(accountName, StringComparison.OrdinalIgnoreCase))
                     {
+                        LogService.Log($"GetSteamId64: Found match! SteamID64: {steamId64}");
                         return steamId64;
                     }
                 }
+                
+                LogService.LogWarning($"GetSteamId64: No matching account found for '{accountName}'");
+                LogService.LogWarning("User may need to log into Steam client with this account first");
             }
-            catch
+            catch (Exception ex)
             {
-                // If anything fails, return null
+                LogService.LogError("GetSteamId64: Error reading loginusers.vdf", ex);
             }
 
             return null;

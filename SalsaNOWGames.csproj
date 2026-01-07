@@ -72,6 +72,7 @@
     <Compile Include="Models\UserSettings.cs" />
     <Compile Include="Services\DepotDownloaderService.cs" />
     <Compile Include="Services\GamesLibraryService.cs" />
+    <Compile Include="Services\LogService.cs" />
     <Compile Include="Services\OwnedGamesService.cs" />
     <Compile Include="Services\SteamApiService.cs" />
     <Compile Include="Services\SteamAuthService.cs" />

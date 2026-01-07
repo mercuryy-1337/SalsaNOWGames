@@ -105,18 +105,31 @@ namespace SalsaNOWGames.Services
 
         public async Task<OwnedGamesResponse> GetOwnedGamesAsync(string accountName, bool forceRefresh = false)
         {
+            LogService.Log($"GetOwnedGamesAsync called for account: {accountName}, forceRefresh: {forceRefresh}");
+            
             if (string.IsNullOrEmpty(accountName))
+            {
+                LogService.LogWarning("GetOwnedGamesAsync: accountName is null or empty");
                 return null;
+            }
 
             string steamId64 = _steamVdfService.GetSteamId64(accountName);
             if (string.IsNullOrEmpty(steamId64))
+            {
+                LogService.LogWarning($"GetOwnedGamesAsync: Could not resolve SteamID64 for account '{accountName}'");
                 return null;
+            }
+            
+            LogService.Log($"Resolved SteamID64: {steamId64}");
 
             if (forceRefresh)
             {
                 var timeSinceLastRefresh = DateTime.Now - _lastRefreshAttempt;
                 if (timeSinceLastRefresh.TotalSeconds < MinRefreshIntervalSeconds)
+                {
+                    LogService.Log("Refresh throttled, returning cached data");
                     return _cachedResponse ?? LoadFromCache(steamId64);
+                }
                 _lastRefreshAttempt = DateTime.Now;
             }
 
@@ -128,12 +141,14 @@ namespace SalsaNOWGames.Services
 
             if (cacheValid && !forceRefresh)
             {
+                LogService.Log($"Using valid cache ({_cachedResponse?.GameCount ?? 0} games)");
                 if ((DateTime.Now - _lastFetchTime).TotalHours > 3)
                     _ = RefreshInBackgroundAsync(steamId64);
                 return _cachedResponse;
             }
 
             // Cache expired or force refresh - fetch new data
+            LogService.Log("Cache invalid or force refresh - fetching from API");
             if (forceRefresh || !cacheValid)
             {
                 var freshData = await FetchFromApiAsync(steamId64);
@@ -144,6 +159,10 @@ namespace SalsaNOWGames.Services
                     SaveToCache(freshData);
                     return freshData;
                 }
+                else
+                {
+                    LogService.LogWarning("API returned null, falling back to cached data");
+                }
             }
 
             return _cachedResponse;
@@ -152,30 +171,54 @@ namespace SalsaNOWGames.Services
         // Returns cached data immediately (no network calls) - use for instant startup
         public OwnedGamesResponse GetCachedOwnedGames(string accountName)
         {
+            LogService.Log($"GetCachedOwnedGames called for account: {accountName}");
+            
             if (string.IsNullOrEmpty(accountName))
+            {
+                LogService.LogWarning("GetCachedOwnedGames: accountName is null or empty");
                 return null;
+            }
 
             string steamId64 = _steamVdfService.GetSteamId64(accountName);
             if (string.IsNullOrEmpty(steamId64))
+            {
+                LogService.LogWarning($"GetCachedOwnedGames: Could not resolve SteamID64 for account '{accountName}'");
                 return null;
+            }
 
             if (_cachedResponse != null)
+            {
+                LogService.Log($"Returning in-memory cache ({_cachedResponse.GameCount} games)");
                 return _cachedResponse;
+            }
 
             _cachedResponse = LoadFromCache(steamId64);
+            if (_cachedResponse == null)
+            {
+                LogService.LogWarning("No cached data available - library will be empty until API fetch completes");
+            }
             return _cachedResponse;
         }
 
         // Starts background refresh without blocking
         public void StartBackgroundRefresh(string accountName)
         {
+            LogService.Log($"StartBackgroundRefresh called for account: {accountName}");
+            
             if (string.IsNullOrEmpty(accountName))
+            {
+                LogService.LogWarning("StartBackgroundRefresh: accountName is null or empty");
                 return;
+            }
 
             string steamId64 = _steamVdfService.GetSteamId64(accountName);
             if (string.IsNullOrEmpty(steamId64))
+            {
+                LogService.LogWarning($"StartBackgroundRefresh: Could not resolve SteamID64 for account '{accountName}'");
                 return;
+            }
 
+            LogService.Log($"Starting background refresh for SteamID64: {steamId64}");
             _ = RefreshInBackgroundAsync(steamId64);
         }
 
@@ -189,17 +232,27 @@ namespace SalsaNOWGames.Services
                     _cachedResponse = freshData;
                     _lastFetchTime = DateTime.Now;
                     SaveToCache(freshData);
+                    LogService.Log($"Background refresh completed with {freshData.GameCount} games");
                     OnOwnedGamesUpdated?.Invoke(freshData);
                 }
+                else
+                {
+                    LogService.LogWarning("Background refresh returned null - API may be unavailable");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.LogError("Background refresh failed", ex);
+            }
         }
 
         private async Task<OwnedGamesResponse> FetchFromApiAsync(string steamId64)
         {
+            string url = ApiBaseUrl + steamId64;
             try
             {
-                string url = ApiBaseUrl + steamId64;
+                LogService.Log($"Fetching owned games from API for SteamID: {steamId64}");
+                LogService.Log($"API URL: {url}");
                 string json;
 
                 using (var client = new WebClient())
@@ -208,14 +261,31 @@ namespace SalsaNOWGames.Services
                     json = await client.DownloadStringTaskAsync(url);
                 }
 
+                LogService.Log($"API response received, parsing JSON ({json.Length} bytes)");
+                
                 var serializer = new DataContractJsonSerializer(typeof(OwnedGamesResponse));
                 using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 {
-                    return (OwnedGamesResponse)serializer.ReadObject(ms);
+                    var response = (OwnedGamesResponse)serializer.ReadObject(ms);
+                    LogService.LogApi(url, true, $"Got {response?.GameCount ?? 0} games");
+                    return response;
                 }
             }
-            catch
+            catch (WebException webEx)
             {
+                string errorDetails = $"Status: {webEx.Status}";
+                if (webEx.Response is HttpWebResponse httpResponse)
+                {
+                    errorDetails += $", HTTP {(int)httpResponse.StatusCode} {httpResponse.StatusDescription}";
+                }
+                LogService.LogApi(url, false, errorDetails);
+                LogService.LogError("API request failed", webEx);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LogService.LogApi(url, false, ex.Message);
+                LogService.LogError("Failed to fetch owned games", ex);
                 return null;
             }
         }
@@ -274,18 +344,28 @@ namespace SalsaNOWGames.Services
                 sb.AppendLine("}");
 
                 File.WriteAllText(_cacheFilePath, sb.ToString(), Encoding.UTF8);
+                LogService.Log($"Saved {response.GameCount} games to cache: {_cacheFilePath}");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.LogError($"Failed to save cache to {_cacheFilePath}", ex);
+            }
         }
 
         private OwnedGamesResponse LoadFromCache(string expectedSteamId64)
         {
             try
             {
+                LogService.Log($"Loading cache from: {_cacheFilePath}");
+                
                 if (!File.Exists(_cacheFilePath))
+                {
+                    LogService.LogWarning($"Cache file does not exist: {_cacheFilePath}");
                     return null;
+                }
 
                 string content = File.ReadAllText(_cacheFilePath, Encoding.UTF8);
+                LogService.Log($"Cache file loaded ({content.Length} bytes)");
 
                 var cachedAtMatch = Regex.Match(content, @"""cached_at""\s*""([^""]+)""");
                 if (cachedAtMatch.Success && DateTime.TryParse(cachedAtMatch.Groups[1].Value, out DateTime cachedAt))
@@ -293,11 +373,17 @@ namespace SalsaNOWGames.Services
 
                 var steamIdMatch = Regex.Match(content, @"""steamid64""\s*""(\d+)""");
                 if (!steamIdMatch.Success)
+                {
+                    LogService.LogWarning("Cache file missing steamid64");
                     return null;
+                }
 
                 string cachedSteamId = steamIdMatch.Groups[1].Value;
                 if (!string.IsNullOrEmpty(expectedSteamId64) && cachedSteamId != expectedSteamId64)
+                {
+                    LogService.LogWarning($"Cache steamid mismatch: expected {expectedSteamId64}, got {cachedSteamId}");
                     return null;
+                }
 
                 var gameCountMatch = Regex.Match(content, @"""game_count""\s*""(\d+)""");
                 int gameCount = gameCountMatch.Success ? int.Parse(gameCountMatch.Groups[1].Value) : 0;
@@ -345,16 +431,20 @@ namespace SalsaNOWGames.Services
                     }
                 }
 
-                return new OwnedGamesResponse
+                var result = new OwnedGamesResponse
                 {
                     SteamId64 = cachedSteamId,
                     GameCount = gameCount,
                     Games = games,
                     CacheHit = true
                 };
+                
+                LogService.Log($"Cache loaded successfully: {games.Count} games for SteamID {cachedSteamId}");
+                return result;
             }
-            catch
+            catch (Exception ex)
             {
+                LogService.LogError("Failed to load cache", ex);
                 return null;
             }
         }

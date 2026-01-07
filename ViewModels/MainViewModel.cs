@@ -50,6 +50,10 @@ namespace SalsaNOWGames.ViewModels
 
         public MainViewModel()
         {
+            LogService.Log("=== SalsaNOW Games Starting ===");
+            LogService.Log($"Version: {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}");
+            LogService.Log($"Log file: {LogService.GetLogFilePath()}");
+            
             _settingsService = new SettingsService();
             _steamApiService = new SteamApiService();
             _depotDownloaderService = new DepotDownloaderService(_settingsService.Settings.InstallDirectory);
@@ -61,6 +65,8 @@ namespace SalsaNOWGames.ViewModels
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
             _currentView = "login";
+            
+            LogService.Log("Services initialized");
 
             // Initialize status clear timer (clears after 5 seconds)
             _statusClearTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
@@ -73,6 +79,7 @@ namespace SalsaNOWGames.ViewModels
             // Subscribe to owned games updated event (auto-refresh when background fetch completes)
             _ownedGamesService.OnOwnedGamesUpdated += (response) =>
             {
+                LogService.Log($"OnOwnedGamesUpdated triggered with {response?.GameCount ?? 0} games");
                 Application.Current.Dispatcher.Invoke(async () =>
                 {
                     // Merge any games.json data first
@@ -342,12 +349,16 @@ namespace SalsaNOWGames.ViewModels
 
         #region Methods
 
-        private void CheckExistingLogin()
+        private async void CheckExistingLogin()
         {
+            LogService.Log("CheckExistingLogin started");
+            
             // First check for saved Steam session
             var savedSession = _steamAuthService.LoadSession();
             if (savedSession != null && savedSession.IsValid)
             {
+                LogService.Log($"Found valid saved session for: {savedSession.Username}");
+                
                 // Try to restore password from session
                 string restoredPassword = savedSession.GetPassword();
                 
@@ -355,6 +366,7 @@ namespace SalsaNOWGames.ViewModels
                 // clear the session and force re-login
                 if (string.IsNullOrEmpty(restoredPassword))
                 {
+                    LogService.LogWarning("Could not restore password from session");
                     _steamAuthService.ClearSession();
                     _settingsService.ClearLogin();
                     LoginError = "Session expired. Please sign in again.";
@@ -370,25 +382,41 @@ namespace SalsaNOWGames.ViewModels
                 
                 CurrentView = "library";
                 StatusMessage = $"Welcome back, {DisplayName}!";
-                _ = RefreshInstalledGamesAsync();
                 
-                // Fetch owned games in background (doesn't block startup)
-                _ownedGamesService.StartBackgroundRefresh(savedSession.Username);
+                // Refresh library (will fetch from API if no cache)
+                await RefreshInstalledGamesAsync();
+                
+                // Start background refresh for next time (only if cache exists)
+                var cachedGames = _ownedGamesService.GetCachedOwnedGames(savedSession.Username);
+                if (cachedGames != null && cachedGames.Games != null && cachedGames.Games.Count > 0)
+                {
+                    _ownedGamesService.StartBackgroundRefresh(savedSession.Username);
+                }
                 return;
             }
 
             // Fallback to old settings
             if (_settingsService.IsLoggedIn)
             {
+                LogService.Log($"Restoring from old settings: {_settingsService.Settings.SteamUsername}");
                 IsLoggedIn = true;
                 SteamUsername = _settingsService.Settings.SteamUsername;
                 DisplayName = _steamVdfService.GetPersonaName(_settingsService.Settings.SteamUsername) ?? "Steam User";
                 AvatarUrl = _settingsService.Settings.AvatarUrl;
                 CurrentView = "library";
-                _ = RefreshInstalledGamesAsync();
                 
-                // Fetch owned games in background
-                _ownedGamesService.StartBackgroundRefresh(_settingsService.Settings.SteamUsername);
+                await RefreshInstalledGamesAsync();
+                
+                // Start background refresh for next time
+                var cachedGames = _ownedGamesService.GetCachedOwnedGames(_settingsService.Settings.SteamUsername);
+                if (cachedGames != null && cachedGames.Games != null && cachedGames.Games.Count > 0)
+                {
+                    _ownedGamesService.StartBackgroundRefresh(_settingsService.Settings.SteamUsername);
+                }
+            }
+            else
+            {
+                LogService.Log("No existing login found");
             }
         }
 
@@ -397,6 +425,7 @@ namespace SalsaNOWGames.ViewModels
 
         private async Task LoginAsync()
         {
+            LogService.Log("LoginAsync started");
             IsLoggingIn = true;
             LoginError = "";
 
@@ -409,6 +438,8 @@ namespace SalsaNOWGames.ViewModels
 
                 if (result == true && !string.IsNullOrEmpty(loginWindow.Username) && !string.IsNullOrEmpty(loginWindow.Password))
                 {
+                    LogService.Log($"Login attempt for user: {loginWindow.Username}");
+                    
                     // Store password for downloads
                     _steamPassword = loginWindow.Password;
                     
@@ -468,6 +499,7 @@ namespace SalsaNOWGames.ViewModels
 
         private async Task RefreshInstalledGamesAsync()
         {
+            LogService.Log("RefreshInstalledGamesAsync started");
             InstalledGames.Clear();
 
             // Refresh Steam library detection
@@ -476,8 +508,25 @@ namespace SalsaNOWGames.ViewModels
 
             // Get owned games from salsa.vdf cache
             var ownedGames = _ownedGamesService.GetCachedOwnedGames(SteamUsername);
+            
+            // If no cache exists, fetch from API synchronously (first login scenario)
             if (ownedGames == null || ownedGames.Games == null || ownedGames.Games.Count == 0)
             {
+                LogService.Log("No cached games found, fetching from API...");
+                StatusMessage = "Loading your Steam library...";
+                
+                // Try to fetch from API
+                ownedGames = await _ownedGamesService.GetOwnedGamesAsync(SteamUsername, forceRefresh: true);
+                
+                if (ownedGames != null && ownedGames.Games != null && ownedGames.Games.Count > 0)
+                {
+                    LogService.Log($"Fetched {ownedGames.Games.Count} games from API");
+                }
+            }
+            
+            if (ownedGames == null || ownedGames.Games == null || ownedGames.Games.Count == 0)
+            {
+                LogService.LogWarning("No games from API either, falling back to games.json");
                 // Fallback to games.json if salsa.vdf is empty - sort alphabetically
                 var allGames = _gamesLibraryService.Games.OrderBy(g => g.Name).ToList();
                 foreach (var game in allGames)
@@ -485,9 +534,14 @@ namespace SalsaNOWGames.ViewModels
                     var gameInfo = CreateGameInfoFromLibrary(game);
                     InstalledGames.Add(gameInfo);
                 }
+                StatusMessage = allGames.Count > 0 
+                    ? $"Showing {allGames.Count} games from local library" 
+                    : "No games found. Search for games to add them to your library.";
             }
             else
             {
+                LogService.Log($"Loading {ownedGames.Games.Count} games into library view");
+                
                 // Merge games.json data into salsa.vdf (one-time migration per session)
                 if (_gamesLibraryService.Games.Any())
                 {
