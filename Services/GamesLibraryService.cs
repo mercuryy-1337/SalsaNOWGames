@@ -186,6 +186,12 @@ namespace SalsaNOWGames.Services
             _steamLibraryService.Refresh();
         }
 
+        // Gets the Steam manifest path for a game
+        public string GetSteamManifestPath(string appId)
+        {
+            return _steamLibraryService.GetManifestPath(appId);
+        }
+
         // Check if game has a shortcut created
         public bool HasShortcut(string appId)
         {

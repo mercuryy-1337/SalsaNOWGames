@@ -101,6 +101,7 @@ namespace SalsaNOWGames.ViewModels
             CreateShortcutCommand = new RelayCommand(CreateShortcut);
             OpenSteamLibraryCommand = new RelayCommand(OpenSteamLibrary);
             OpenFolderCommand = new RelayCommand(OpenGameFolder);
+            PlayGameCommand = new RelayCommand(PlayGame);
             CancelDownloadCommand = new RelayCommand(CancelDownload, () => IsDownloading);
             EnterSteamGuardCommand = new RelayCommand(ManuallyEnterSteamGuard, () => IsDownloading);
             ShowLibraryCommand = new RelayCommand(() => CurrentView = "library");
@@ -338,6 +339,7 @@ namespace SalsaNOWGames.ViewModels
         public ICommand CreateShortcutCommand { get; }
         public ICommand OpenSteamLibraryCommand { get; }
         public ICommand OpenFolderCommand { get; }
+        public ICommand PlayGameCommand { get; }
         public ICommand CancelDownloadCommand { get; }
         public ICommand EnterSteamGuardCommand { get; }
         public ICommand ShowLibraryCommand { get; }
@@ -706,6 +708,13 @@ namespace SalsaNOWGames.ViewModels
             }
 
             SelectedGame = game;
+            
+            // Convert library_600x900 to header.jpg for download view
+            if (!string.IsNullOrEmpty(game.HeaderImageUrl) && game.HeaderImageUrl.Contains("library_600x900"))
+            {
+                game.HeaderImageUrl = game.HeaderImageUrl.Replace("/library_600x900.jpg", "/header.jpg");
+            }
+            
             game.IsDownloading = true;
             game.DownloadProgress = 0;
             game.DownloadStatus = "Starting download...";
@@ -730,52 +739,145 @@ namespace SalsaNOWGames.ViewModels
         {
             if (parameter is GameInfo game)
             {
+                // Check if this is a Steam-installed game
+                bool isSteamInstalled = game.IsInstalledViaSteam && !game.IsInstalledViaSalsa;
+                
+                string message = isSteamInstalled
+                    ? $"Are you sure you want to uninstall {game.Name}?\n\nThis will open Steam's uninstaller."
+                    : $"Are you sure you want to delete {game.Name}?\n\nThis will permanently remove all game files.";
+
                 var result = MessageBox.Show(
-                    $"Are you sure you want to delete {game.Name}?\n\nThis will permanently remove all game files.",
+                    message,
                     "Confirm Delete",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    StatusMessage = $"Deleting {game.Name}...";
-                    
-                    _depotDownloaderService.DeleteGameAsync(game.AppId, (success) =>
+                    if (isSteamInstalled)
                     {
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            if (success)
-                            {
-                                // Mark as uninstalled in salsa.vdf (primary)
-                                _ownedGamesService.MarkGameAsUninstalled(game.AppId);
-                                
-                                // Also update games.json for backward compatibility
-                                _gamesLibraryService.MarkAsUninstalled(game.AppId);
-                                _settingsService.RemoveInstalledGame(game.AppId);
-                                
-                                // Update the game in the list instead of removing
-                                game.IsInstalled = false;
-                                game.IsInstalledViaSalsa = false;
-                                game.SizeOnDisk = 0;
-                                
-                                // Also update in search results if present
-                                var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
-                                if (searchGame != null)
-                                {
-                                    searchGame.IsInstalled = false;
-                                }
-                                
-                                ShowTemporaryStatus($"{game.Name} has been deleted.");
-                                UpdateDriveUsage();
-                            }
-                            else
-                            {
-                                ShowTemporaryStatus("Failed to delete game.");
-                            }
-                        });
-                    });
+                        // Uninstall via Steam
+                        UninstallSteamGame(game);
+                    }
+                    else
+                    {
+                        // Delete Salsa-installed game
+                        DeleteSalsaGame(game);
+                    }
                 }
             }
+        }
+
+        private void UninstallSteamGame(GameInfo game)
+        {
+            StatusMessage = $"Uninstalling {game.Name} via Steam...";
+            
+            // Get manifest path before launching uninstaller
+            string manifestPath = _gamesLibraryService.GetSteamManifestPath(game.AppId);
+            
+            // Launch Steam uninstaller
+            try
+            {
+                System.Diagnostics.Process.Start($"steam://uninstall/{game.AppId}");
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"Failed to launch Steam uninstaller: {ex.Message}");
+                ShowTemporaryStatus("Failed to launch Steam uninstaller.");
+                return;
+            }
+
+            // Poll for uninstall completion in background
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                int maxAttempts = 120; // 2 minutes max
+                int attempts = 0;
+                
+                while (attempts < maxAttempts)
+                {
+                    await System.Threading.Tasks.Task.Delay(1000); // Check every second
+                    attempts++;
+                    
+                    // Check if manifest file is gone
+                    bool stillExists = !string.IsNullOrEmpty(manifestPath) && System.IO.File.Exists(manifestPath);
+                    
+                    // Also check via service
+                    if (!stillExists)
+                    {
+                        _gamesLibraryService.RefreshSteamLibrary();
+                        stillExists = _gamesLibraryService.IsInstalledViaSteam(game.AppId);
+                    }
+                    
+                    if (!stillExists)
+                    {
+                        // Game was uninstalled
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            game.IsInstalled = false;
+                            game.IsInstalledViaSteam = false;
+                            game.SizeOnDisk = 0;
+                            
+                            var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
+                            if (searchGame != null)
+                            {
+                                searchGame.IsInstalled = false;
+                                searchGame.IsInstalledViaSteam = false;
+                            }
+                            
+                            LogService.Log($"Steam uninstall completed for {game.Name} (AppId: {game.AppId})");
+                            ShowTemporaryStatus($"{game.Name} has been uninstalled.");
+                        });
+                        return;
+                    }
+                }
+                
+                // Timeout - user may have cancelled
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    LogService.Log($"Steam uninstall timed out or cancelled for {game.Name}");
+                    ShowTemporaryStatus("Uninstall cancelled or timed out.");
+                });
+            });
+        }
+
+        private void DeleteSalsaGame(GameInfo game)
+        {
+            StatusMessage = $"Deleting {game.Name}...";
+            
+            _depotDownloaderService.DeleteGameAsync(game.AppId, (success) =>
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (success)
+                    {
+                        // Mark as uninstalled in salsa.vdf (primary)
+                        _ownedGamesService.MarkGameAsUninstalled(game.AppId);
+                        
+                        // Also update games.json for backward compatibility
+                        _gamesLibraryService.MarkAsUninstalled(game.AppId);
+                        _settingsService.RemoveInstalledGame(game.AppId);
+                        
+                        // Update the game in the list instead of removing
+                        game.IsInstalled = false;
+                        game.IsInstalledViaSalsa = false;
+                        game.SizeOnDisk = 0;
+                        
+                        // Also update in search results if present
+                        var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
+                        if (searchGame != null)
+                        {
+                            searchGame.IsInstalled = false;
+                        }
+                        
+                        ShowTemporaryStatus($"{game.Name} has been deleted.");
+                        UpdateDriveUsage();
+                    }
+                    else
+                    {
+                        ShowTemporaryStatus("Failed to delete game.");
+                    }
+                });
+            });
         }
 
         private void ShowTemporaryStatus(string message)
@@ -820,6 +922,26 @@ namespace SalsaNOWGames.ViewModels
                 catch (Exception ex)
                 {
                     ShowTemporaryStatus($"Failed to open Steam: {ex.Message}");
+                }
+            }
+        }
+
+        private void PlayGame(object parameter)
+        {
+            if (parameter is GameInfo game)
+            {
+                try
+                {
+                    // Launch game via Steam
+                    string steamUrl = $"steam://run/{game.AppId}";
+                    System.Diagnostics.Process.Start(steamUrl);
+                    LogService.Log($"Launching game via Steam: {game.Name} (AppID: {game.AppId})");
+                    ShowTemporaryStatus($"Launching {game.Name}...");
+                }
+                catch (Exception ex)
+                {
+                    LogService.LogError($"Failed to launch game {game.AppId}", ex);
+                    ShowTemporaryStatus($"Failed to launch game: {ex.Message}");
                 }
             }
         }

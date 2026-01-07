@@ -299,11 +299,12 @@
                                                         <!-- Steam Play Button (for Steam installs) -->
                                                         <Button Grid.Column="0"
                                                                 Style="{StaticResource ModernButton}"
+                                                                Command="{Binding DataContext.PlayGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"
                                                                 Padding="0,10"
                                                                 FontSize="14"
                                                                 Content="▶"
-                                                                IsEnabled="False"
-                                                                ToolTip="Launch via Steam (coming soon)"
+                                                                ToolTip="Launch via Steam"
                                                                 Visibility="{Binding IsInstalledViaSteam, Converter={StaticResource BoolToVisibility}}"/>
                                                         
                                                         <!-- Open Steam Library Button (for Salsa installs with shortcut) -->

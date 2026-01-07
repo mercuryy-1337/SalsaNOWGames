@@ -107,5 +107,15 @@ namespace SalsaNOWGames.Services
         {
             ScanInstalledGames();
         }
+
+        // Gets the manifest file path for a game
+        public string GetManifestPath(string appId)
+        {
+            if (!Directory.Exists(_steamAppsPath))
+                return null;
+
+            string manifestPath = Path.Combine(_steamAppsPath, $"appmanifest_{appId}.acf");
+            return File.Exists(manifestPath) ? manifestPath : null;
+        }
     }
 }

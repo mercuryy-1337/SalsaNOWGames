@@ -5,6 +5,19 @@ All notable changes to SalsaNOW Games will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-01-07
+
+### Added
+- **Play Button** - Launch games installed via Steam directly from the library
+  - Click the ▶ button on any Steam-installed game to launch via through steam
+- **Steam Uninstall** - Delete button now properly uninstalls Steam-installed games
+  - Opens Steam's native uninstaller via `steam://uninstall/{appid}`
+  - Automatically detects when uninstall completes by polling the manifest file
+
+### Changed
+- Download view now displays header images instead of library portraits
+  - Automatically converts `library_600x900.jpg` to `header.jpg` when downloading
+
 ## [1.1.1] - 2026-01-07
 
 ### Fixed
@@ -57,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[1.1.2]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.0.5...v1.0.6
