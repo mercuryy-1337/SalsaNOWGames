@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -21,6 +22,7 @@ namespace SalsaNOWGames.ViewModels
         private readonly GamesLibraryService _gamesLibraryService;
         private readonly SteamVdfService _steamVdfService;
         private readonly OwnedGamesService _ownedGamesService;
+        private readonly SteamHeaderService _headerService;
 
         // Login state
         private bool _isLoggedIn;
@@ -61,6 +63,7 @@ namespace SalsaNOWGames.ViewModels
             _gamesLibraryService = new GamesLibraryService();
             _steamVdfService = new SteamVdfService();
             _ownedGamesService = new OwnedGamesService(_steamVdfService);
+            _headerService = new SteamHeaderService();
 
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
@@ -552,6 +555,20 @@ namespace SalsaNOWGames.ViewModels
 
                 // Use salsa.vdf as primary source - sort alphabetically
                 var sortedGames = ownedGames.Games.OrderBy(g => g.Name).ToList();
+                
+                // Collect app IDs that need header image fetching
+                var appIdsNeedingHeaders = sortedGames
+                    .Where(g => string.IsNullOrEmpty(g.HeaderImageUrl) || 
+                               !g.HeaderImageUrl.Contains("store_item_assets"))
+                    .Select(g => g.AppId.ToString())
+                    .ToList();
+                
+                // Fetch header images in background
+                if (appIdsNeedingHeaders.Count > 0)
+                {
+                    _ = FetchHeaderImagesAsync(appIdsNeedingHeaders);
+                }
+                
                 foreach (var game in sortedGames)
                 {
                     string appId = game.AppId.ToString();
@@ -563,11 +580,16 @@ namespace SalsaNOWGames.ViewModels
                         ? game.InstallPath 
                         : _gamesLibraryService.GetInstallPath(appId);
                     
+                    // Use cached header URL or fallback
+                    string headerUrl = !string.IsNullOrEmpty(game.HeaderImageUrl) 
+                        ? game.HeaderImageUrl 
+                        : SteamHeaderService.GetFallbackHeaderUrl(appId);
+                    
                     var gameInfo = new GameInfo
                     {
                         AppId = appId,
                         Name = game.Name,
-                        HeaderImageUrl = game.HeaderImageUrl,
+                        HeaderImageUrl = headerUrl,
                         IconUrl = game.IconUrl,
                         PlaytimeMinutes = game.PlaytimeForeverMinutes,
                         IsInstalled = steamInstalled || salsaInstalled,
@@ -601,6 +623,37 @@ namespace SalsaNOWGames.ViewModels
             UpdateDriveUsage();
             await Task.CompletedTask;
         }
+        
+        // Fetches header images (cached or from network) and updates UI + salsa.vdf
+        private async Task FetchHeaderImagesAsync(List<string> appIds)
+        {
+            try
+            {
+                LogService.Log($"Fetching header images for {appIds.Count} games...");
+                var headerUrls = await _headerService.GetHeaderUrlsBatchAsync(appIds);
+                
+                // Batch update salsa.vdf with new header URLs
+                _ownedGamesService.UpdateHeaderImageUrls(headerUrls);
+                
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    foreach (var kvp in headerUrls)
+                    {
+                        var game = InstalledGames.FirstOrDefault(g => g.AppId == kvp.Key);
+                        if (game != null && !string.IsNullOrEmpty(kvp.Value))
+                        {
+                            game.HeaderImageUrl = kvp.Value;
+                        }
+                    }
+                });
+                
+                LogService.Log($"Header images updated for {headerUrls.Count} games");
+            }
+            catch (Exception ex)
+            {
+                LogService.LogError("Failed to fetch header images", ex);
+            }
+        }
 
         private GameInfo CreateGameInfoFromLibrary(InstalledGame game)
         {
@@ -608,11 +661,16 @@ namespace SalsaNOWGames.ViewModels
             bool salsaInstalled = game.Install?.Salsa ?? false;
             string installPath = _gamesLibraryService.GetInstallPath(game.Id);
             
+            // Use cached header URL or fallback
+            string headerUrl = !string.IsNullOrEmpty(game.HeaderImageUrl) 
+                ? game.HeaderImageUrl 
+                : SteamHeaderService.GetFallbackHeaderUrl(game.Id);
+            
             var gameInfo = new GameInfo
             {
                 AppId = game.Id,
                 Name = game.Name,
-                HeaderImageUrl = game.HeaderImageUrl,
+                HeaderImageUrl = headerUrl,
                 InstallPath = installPath,
                 IsInstalled = steamInstalled || salsaInstalled,
                 IsInstalledViaSteam = steamInstalled,
@@ -708,12 +766,6 @@ namespace SalsaNOWGames.ViewModels
             }
 
             SelectedGame = game;
-            
-            // Convert library_600x900 to header.jpg for download view
-            if (!string.IsNullOrEmpty(game.HeaderImageUrl) && game.HeaderImageUrl.Contains("library_600x900"))
-            {
-                game.HeaderImageUrl = game.HeaderImageUrl.Replace("/library_600x900.jpg", "/header.jpg");
-            }
             
             game.IsDownloading = true;
             game.DownloadProgress = 0;

@@ -76,6 +76,7 @@
     <Compile Include="Services\OwnedGamesService.cs" />
     <Compile Include="Services\SteamApiService.cs" />
     <Compile Include="Services\SteamAuthService.cs" />
+    <Compile Include="Services\SteamHeaderService.cs" />
     <Compile Include="Services\SteamLibraryService.cs" />
     <Compile Include="Services\SteamVdfService.cs" />
     <Compile Include="Services\SettingsService.cs" />

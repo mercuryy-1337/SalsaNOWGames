@@ -242,80 +242,72 @@
                                 Padding="15,8"/>
                     </StackPanel>
                     
-                    <!-- Game Grid -->
+                    <!-- Game Grid - Landscape Cards -->
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding InstalledGames}" x:Name="LibraryItemsControl">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="5" HorizontalAlignment="Stretch"/>
+                                    <UniformGrid Columns="3" HorizontalAlignment="Stretch"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource GameCard}" MinWidth="180" MaxWidth="250">
+                                    <Border Style="{StaticResource GameCard}" MinWidth="280">
                                         <Grid>
                                             <Grid.RowDefinitions>
-                                                <RowDefinition Height="300"/>
-                                                <RowDefinition Height="110"/>
+                                                <RowDefinition Height="135"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             
-                                            <!-- Game Image (600x900 portrait) -->
+                                            <!-- Game Image (header landscape) -->
                                             <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True">
                                                 <Image Source="{Binding HeaderImageUrl}" 
                                                        Stretch="UniformToFill"/>
                                             </Border>
                                             
                                             <!-- Game Info -->
-                                            <Grid Grid.Row="1" Margin="10">
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="*"/>
-                                                    <RowDefinition Height="Auto"/>
-                                                </Grid.RowDefinitions>
+                                            <Grid Grid.Row="1" Margin="12,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
                                                 
-                                                <StackPanel Grid.Row="0">
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Name}" 
-                                                               FontSize="13" 
+                                                               FontSize="14" 
                                                                FontWeight="SemiBold"
                                                                Foreground="{StaticResource TextBrush}"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               TextWrapping="Wrap"
-                                                               MaxHeight="36"/>
+                                                               TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Text="{Binding SizeOnDiskFormatted}" 
                                                                FontSize="11"
                                                                Foreground="{StaticResource TextSecondaryBrush}"
-                                                               Margin="0,4,0,0"/>
+                                                               Margin="0,3,0,0"/>
                                                 </StackPanel>
                                                 
-                                                <!-- Buttons - Fixed at bottom -->
-                                                <Grid Grid.Row="1">
+                                                <!-- Buttons -->
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <!-- Buttons when installed -->
-                                                    <Grid Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}}">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="8"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        
+                                                    <StackPanel Orientation="Horizontal" Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}}">
                                                         <!-- Steam Play Button (for Steam installs) -->
-                                                        <Button Grid.Column="0"
-                                                                Style="{StaticResource ModernButton}"
+                                                        <Button Style="{StaticResource ModernButton}"
                                                                 Command="{Binding DataContext.PlayGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 CommandParameter="{Binding}"
-                                                                Padding="0,10"
+                                                                Padding="12,8"
                                                                 FontSize="14"
                                                                 Content="▶"
                                                                 ToolTip="Launch via Steam"
+                                                                Margin="0,0,6,0"
                                                                 Visibility="{Binding IsInstalledViaSteam, Converter={StaticResource BoolToVisibility}}"/>
                                                         
                                                         <!-- Open Steam Library Button (for Salsa installs with shortcut) -->
-                                                        <Button Grid.Column="0"
-                                                                Command="{Binding DataContext.OpenSteamLibraryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        <Button Command="{Binding DataContext.OpenSteamLibraryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 CommandParameter="{Binding}"
-                                                                Padding="0,10"
+                                                                Padding="12,8"
                                                                 FontSize="12"
                                                                 Content="🎮"
                                                                 IsEnabled="False"
-                                                                ToolTip="Open Steam Library (coming soon)">
+                                                                ToolTip="Open Steam Library (coming soon)"
+                                                                Margin="0,0,6,0">
                                                             <Button.Style>
                                                                 <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
                                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -333,14 +325,14 @@
                                                         </Button>
                                                         
                                                         <!-- Create Shortcut Button (for Salsa installs without shortcut) -->
-                                                        <Button Grid.Column="0"
-                                                                Command="{Binding DataContext.CreateShortcutCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        <Button Command="{Binding DataContext.CreateShortcutCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 CommandParameter="{Binding}"
-                                                                Padding="0,10"
+                                                                Padding="12,8"
                                                                 FontSize="12"
                                                                 Content="🔗"
                                                                 IsEnabled="False"
-                                                                ToolTip="Create Steam Shortcut (coming soon)">
+                                                                ToolTip="Create Steam Shortcut (coming soon)"
+                                                                Margin="0,0,6,0">
                                                             <Button.Style>
                                                                 <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
                                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -358,24 +350,23 @@
                                                         </Button>
                                                         
                                                         <!-- Delete Button -->
-                                                        <Button Grid.Column="2"
-                                                                Style="{StaticResource DangerButton}"
+                                                        <Button Style="{StaticResource DangerButton}"
                                                                 Command="{Binding DataContext.DeleteGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 CommandParameter="{Binding}"
-                                                                Padding="0,10"
+                                                                Padding="12,8"
                                                                 FontSize="14"
                                                                 Content="🗑"/>
-                                                    </Grid>
+                                                    </StackPanel>
                                                     
                                                     <!-- Download Button (shown when not installed) -->
                                                     <Button Style="{StaticResource ModernButton}"
                                                             Command="{Binding DataContext.DownloadGameCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                             CommandParameter="{Binding}"
-                                                            Padding="0,10"
+                                                            Padding="12,8"
                                                             FontSize="12"
                                                             Content="⬇ Download"
                                                             Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}"/>
-                                                </Grid>
+                                                </StackPanel>
                                             </Grid>
                                         </Grid>
                                     </Border>

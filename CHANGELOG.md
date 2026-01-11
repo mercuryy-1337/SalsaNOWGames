@@ -5,6 +5,31 @@ All notable changes to SalsaNOW Games will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-01-11
+
+### Changed
+- **Library View Redesign** - Switched to landscape-oriented game cards
+  - Cards now display header images (460x215) instead of portrait library images
+  - More compact layout with 3 columns for better space utilization
+  - Inline action buttons for cleaner appearance
+- **New Header Image System** - Use steam API with CDN fallback
+  - CDN-first approach: tries Akamai/Fastly CDN URLs before API calls
+  - Validates URLs with HEAD requests (Content-Type: image/*) before using
+  - Falls back to IStoreBrowseService API when CDN fails
+  - Header images cached locally in `%LOCALAPPDATA%\SalsaNOWGames\cached_library_images\`
+  - Rate limited to 3 concurrent downloads to avoid Steam throttling
+  - Saves resolved header URLs back to salsa.vdf for faster startup
+- **Centralized Header Service** - New `SteamHeaderService` handles all header image fetching
+  - Used consistently across Library, Search, and Download views
+  - Batch fetching for better performance on large libraries
+- Download view now displays header images instead of library portraits
+
+### Removed
+- Removed `ConvertToLibrary600x900` function (no longer needed)
+- Removed portrait image conversion logic
+- Removed old `appdetails` API for header images (deprecated)
+- Removed `FetchHeaderImageUrlAsync` from SteamApiService
+
 ## [1.1.2] - 2026-01-07
 
 ### Added
@@ -70,6 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[1.1.4]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.1.3...v1.1.4
+[1.1.3]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/mercuryy-1337/SalsaNOWGames/compare/v1.0.6...v1.1.0

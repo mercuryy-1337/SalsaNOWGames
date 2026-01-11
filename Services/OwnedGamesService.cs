@@ -539,6 +539,41 @@ namespace SalsaNOWGames.Services
             UpdateGameInstallStatus(appId, true, false, installPath);
         }
 
+        // Update header image URL for a game
+        public void UpdateHeaderImageUrl(string appId, string headerUrl)
+        {
+            if (_cachedResponse?.Games == null || string.IsNullOrEmpty(headerUrl)) return;
+
+            var game = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == appId);
+            if (game != null && game.HeaderImageUrl != headerUrl)
+            {
+                game.HeaderImageUrl = headerUrl;
+                SaveToCache(_cachedResponse);
+            }
+        }
+
+        // Batch update header URLs (saves once at end)
+        public void UpdateHeaderImageUrls(Dictionary<string, string> headerUrls)
+        {
+            if (_cachedResponse?.Games == null || headerUrls == null || headerUrls.Count == 0) return;
+
+            bool changed = false;
+            foreach (var kvp in headerUrls)
+            {
+                var game = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == kvp.Key);
+                if (game != null && !string.IsNullOrEmpty(kvp.Value) && game.HeaderImageUrl != kvp.Value)
+                {
+                    game.HeaderImageUrl = kvp.Value;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                SaveToCache(_cachedResponse);
+            }
+        }
+
         // Mark game as uninstalled (Salsa)
         public void MarkGameAsUninstalled(string appId)
         {
@@ -596,14 +631,11 @@ namespace SalsaNOWGames.Services
                 if (vdfGame == null)
                 {
                     // Game doesn't exist in salsa.vdf - ADD it from games.json
-                    // Convert old header.jpg format to library_600x900.jpg format
-                    string headerUrl = ConvertToLibrary600x900(jsonGame.HeaderImageUrl);
-                    
                     var newGame = new OwnedGameData
                     {
                         AppId = int.TryParse(jsonGame.Id, out int appId) ? appId : 0,
                         Name = jsonGame.Name ?? $"App {jsonGame.Id}",
-                        HeaderImageUrl = headerUrl,
+                        HeaderImageUrl = $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appId}/header.jpg",
                         IconUrl = "",
                         PlaytimeForeverMinutes = 0,
                         InstallSalsa = jsonGame.Install?.Salsa ?? false,
@@ -655,29 +687,6 @@ namespace SalsaNOWGames.Services
 
             if (anyChanges)
                 SaveToCache(_cachedResponse);
-        }
-
-        // Convert old header.jpg URL to library_600x900.jpg format
-        private string ConvertToLibrary600x900(string headerUrl)
-        {
-            if (string.IsNullOrEmpty(headerUrl))
-                return "";
-            
-            // Already in correct format
-            if (headerUrl.Contains("library_600x900"))
-                return headerUrl;
-            
-            // Convert header.jpg to library_600x900.jpg
-            // e.g. https://cdn.akamai.steamstatic.com/steam/apps/2129510/header.jpg - cataire :)
-            // ->   https://cdn.akamai.steamstatic.com/steam/apps/2129510/library_600x900.jpg
-            if (headerUrl.Contains("/header.jpg"))
-                return headerUrl.Replace("/header.jpg", "/library_600x900.jpg");
-            
-            // Also handle capsule images
-            if (headerUrl.Contains("/capsule_"))
-                return Regex.Replace(headerUrl, @"/capsule_\d+x\d+\.jpg", "/library_600x900.jpg");
-            
-            return headerUrl;
         }
 
         #endregion

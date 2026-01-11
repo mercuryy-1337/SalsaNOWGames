@@ -11,40 +11,31 @@ namespace SalsaNOWGames.Services
     {
         private readonly HttpClient _httpClient;
         private readonly JavaScriptSerializer _jsonSerializer;
-        private readonly OwnedGamesService _ownedGamesService;
+        private readonly SteamHeaderService _headerService;
 
         public SteamApiService()
         {
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "SalsaNOWGames/1.0");
             _jsonSerializer = new JavaScriptSerializer();
-            _ownedGamesService = new OwnedGamesService();
-        }
-
-        // Gets header image URL from cached salsa.vdf, falls back to Steam CDN for searches
-        public string GetHeaderImageUrl(string appId, string accountName = null)
-        {
-            if (!string.IsNullOrEmpty(accountName))
-            {
-                var cached = _ownedGamesService.GetCachedOwnedGames(accountName);
-                var game = cached?.Games?.Find(g => g.AppId.ToString() == appId);
-                if (!string.IsNullOrEmpty(game?.HeaderImageUrl))
-                    return game.HeaderImageUrl;
-            }
-            return $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/header.jpg";
+            _headerService = new SteamHeaderService();
         }
 
         public async Task<GameInfo> GetGameInfoAsync(string appId)
         {
             var gameInfo = new GameInfo
             {
-                AppId = appId,
-                HeaderImageUrl = GetHeaderImageUrl(appId)
+                AppId = appId
             };
 
             try
             {
-                string url = $"https://store.steampowered.com/api/appdetails?appids={appId}";
+                LogService.Log($"Getting game info for AppID {appId}");
+                // Fetch header image using IStoreBrowseService (with caching)
+                gameInfo.HeaderImageUrl = await _headerService.GetHeaderImageAsync(appId);
+                
+                // Get game name from store search (lightweight)
+                string url = $"https://store.steampowered.com/api/appdetails/?appids={appId}&cc=US&l=english&filters=basic";
                 var response = await _httpClient.GetStringAsync(url);
                 
                 var data = _jsonSerializer.Deserialize<Dictionary<string, object>>(response);
@@ -54,16 +45,9 @@ namespace SalsaNOWGames.Services
                     if (appData != null && appData.ContainsKey("success") && (bool)appData["success"])
                     {
                         var gameData = appData["data"] as Dictionary<string, object>;
-                        if (gameData != null)
+                        if (gameData != null && gameData.ContainsKey("name"))
                         {
-                            if (gameData.ContainsKey("name"))
-                            {
-                                gameInfo.Name = gameData["name"]?.ToString();
-                            }
-                            if (gameData.ContainsKey("header_image"))
-                            {
-                                gameInfo.HeaderImageUrl = gameData["header_image"]?.ToString();
-                            }
+                            gameInfo.Name = gameData["name"]?.ToString();
                         }
                     }
                 }
@@ -72,17 +56,23 @@ namespace SalsaNOWGames.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to get game info: {ex.Message}");
                 gameInfo.Name = $"App {appId}";
+                gameInfo.HeaderImageUrl = SteamHeaderService.GetFallbackHeaderUrl(appId);
             }
 
             if (string.IsNullOrEmpty(gameInfo.Name))
             {
                 gameInfo.Name = $"App {appId}";
             }
+            
+            if (string.IsNullOrEmpty(gameInfo.HeaderImageUrl))
+            {
+                gameInfo.HeaderImageUrl = SteamHeaderService.GetFallbackHeaderUrl(appId);
+            }
 
             return gameInfo;
         }
 
-        /* Search for games on Steam. */
+        /* Search for games on Steam - fetches header images using IStoreBrowseService */
         public async Task<List<GameInfo>> SearchGamesAsync(string query)
         {
             var results = new List<GameInfo>();
@@ -99,6 +89,7 @@ namespace SalsaNOWGames.Services
                     var items = data["items"] as System.Collections.ArrayList;
                     if (items != null)
                     {
+                        var tasks = new List<Task>();
                         foreach (var item in items)
                         {
                             var itemDict = item as Dictionary<string, object>;
@@ -114,15 +105,24 @@ namespace SalsaNOWGames.Services
                                 {
                                     gameInfo.Name = itemDict["name"]?.ToString();
                                 }
-                                
-                                gameInfo.HeaderImageUrl = GetHeaderImageUrl(gameInfo.AppId);
 
                                 if (!string.IsNullOrEmpty(gameInfo.AppId))
                                 {
                                     results.Add(gameInfo);
+                                    
+                                    // Fetch header image using IStoreBrowseService (with caching)
+                                    var appId = gameInfo.AppId;
+                                    var game = gameInfo;
+                                    tasks.Add(Task.Run(async () =>
+                                    {
+                                        game.HeaderImageUrl = await _headerService.GetHeaderImageAsync(appId);
+                                    }));
                                 }
                             }
                         }
+                        
+                        // Wait for all header image fetches to complete
+                        await Task.WhenAll(tasks);
                     }
                 }
             }
