@@ -318,10 +318,28 @@
                                                                FontWeight="SemiBold"
                                                                Foreground="{StaticResource TextBrush}"
                                                                TextTrimming="CharacterEllipsis"/>
-                                                    <TextBlock Text="{Binding SizeOnDiskFormatted}" 
-                                                               FontSize="11"
-                                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                                               Margin="0,3,0,0"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                        <TextBlock Text="{Binding SizeOnDiskFormatted}" 
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <!-- Install Source Indicator -->
+                                                        <TextBlock Text=" · " 
+                                                                   FontSize="11" 
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVisibility}}"/>
+                                                        <TextBlock Text="Steam" 
+                                                                   FontSize="11" 
+                                                                   Foreground="#66C0F4"
+                                                                   FontWeight="SemiBold"
+                                                                   ToolTip="Installed via Steam"
+                                                                   Visibility="{Binding IsInstalledViaSteam, Converter={StaticResource BoolToVisibility}}"/>
+                                                        <TextBlock Text="SalsaNOW" 
+                                                                   FontSize="11" 
+                                                                   Foreground="#F0A030"
+                                                                   FontWeight="SemiBold"
+                                                                   ToolTip="Installed via SalsaNOW Games"
+                                                                   Visibility="{Binding IsInstalledViaSalsa, Converter={StaticResource BoolToVisibility}}"/>
+                                                    </StackPanel>
                                                 </StackPanel>
                                                 
                                                 <!-- Buttons -->

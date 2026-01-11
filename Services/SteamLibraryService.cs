@@ -117,5 +117,25 @@ namespace SalsaNOWGames.Services
             string manifestPath = Path.Combine(_steamAppsPath, $"appmanifest_{appId}.acf");
             return File.Exists(manifestPath) ? manifestPath : null;
         }
+
+        // Gets the SizeOnDisk from the game's manifest file (in bytes)
+        public long GetSizeOnDisk(string appId)
+        {
+            string manifestPath = GetManifestPath(appId);
+            if (string.IsNullOrEmpty(manifestPath))
+                return 0;
+
+            try
+            {
+                string content = File.ReadAllText(manifestPath);
+                var sizeMatch = Regex.Match(content, @"""SizeOnDisk""\s*""(\d+)""");
+                if (sizeMatch.Success && long.TryParse(sizeMatch.Groups[1].Value, out long size))
+                {
+                    return size;
+                }
+            }
+            catch { }
+            return 0;
+        }
     }
 }

@@ -142,6 +142,12 @@ namespace SalsaNOWGames.Services
             return _steamLibraryService.IsInstalledViaSteam(appId);
         }
 
+        // Gets the SizeOnDisk for a Steam-installed game from its manifest
+        public long GetSteamSizeOnDisk(string appId)
+        {
+            return _steamLibraryService.GetSizeOnDisk(appId);
+        }
+
         public InstalledGame GetGame(string appId)
         {
             return _games.FirstOrDefault(g => g.Id == appId);

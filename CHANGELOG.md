@@ -5,6 +5,20 @@ All notable changes to SalsaNOW Games will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2025-01-11
+
+### Added
+- **Install Source Indicator** - Visual indicator showing where each game is installed from
+  - Shows "Steam" (blue) for games installed via Steam
+  - Shows "SalsaNOW" (orange) for games installed via SalsaNOW Games
+  - Displayed next to game size in the library view
+  - Includes tooltips for clarity
+
+### Fixed
+- **Steam Game Sizes** - Fixed size display for Steam-installed games
+  - Now reads size from Steam's manifest file instead of calculating from directory
+  - Sizes now match what Windows Explorer and Steam UI display (GiB, not GB)
+
 ## [1.2.0] - 2026-01-11
 
 ### Added

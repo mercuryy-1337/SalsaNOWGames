@@ -639,9 +639,18 @@ namespace SalsaNOWGames.ViewModels
                     }
 
                     // Get size on disk if installed
-                    if (gameInfo.IsInstalled && !string.IsNullOrEmpty(gameInfo.InstallPath) && Directory.Exists(gameInfo.InstallPath))
+                    if (gameInfo.IsInstalled)
                     {
-                        gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(appId);
+                        if (gameInfo.IsInstalledViaSteam && !gameInfo.IsInstalledViaSalsa)
+                        {
+                            // For Steam-only installs, read size from manifest (matches Windows/Steam UI)
+                            gameInfo.SizeOnDisk = _gamesLibraryService.GetSteamSizeOnDisk(appId);
+                        }
+                        else if (!string.IsNullOrEmpty(gameInfo.InstallPath) && Directory.Exists(gameInfo.InstallPath))
+                        {
+                            // For Salsa installs, calculate from directory
+                            gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(appId);
+                        }
                     }
 
                     InstalledGames.Add(gameInfo);
@@ -761,11 +770,21 @@ namespace SalsaNOWGames.ViewModels
                 IsLoadingImage = !isCached && !hasValidHeader
             };
 
-            if (gameInfo.IsInstalled && !string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+            if (gameInfo.IsInstalled)
             {
-                gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(game.Id);
+                if (steamInstalled && !salsaInstalled)
+                {
+                    // For Steam-only installs, read size from manifest (matches Windows/Steam UI)
+                    gameInfo.SizeOnDisk = _gamesLibraryService.GetSteamSizeOnDisk(game.Id);
+                }
+                else if (!string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+                {
+                    // For Salsa installs, calculate from directory
+                    gameInfo.SizeOnDisk = _depotDownloaderService.GetGameSize(game.Id);
+                }
             }
-            else if (salsaInstalled && (string.IsNullOrEmpty(installPath) || !Directory.Exists(installPath)))
+            
+            if (salsaInstalled && (string.IsNullOrEmpty(installPath) || !Directory.Exists(installPath)))
             {
                 // Salsa install path invalid, mark as uninstalled
                 _gamesLibraryService.MarkAsUninstalled(game.Id);
