@@ -23,6 +23,7 @@ namespace SalsaNOWGames.ViewModels
         private readonly SteamVdfService _steamVdfService;
         private readonly OwnedGamesService _ownedGamesService;
         private readonly SteamHeaderService _headerService;
+        private readonly SteamShortcutManager _shortcutManager;
 
         // Login state
         private bool _isLoggedIn;
@@ -64,6 +65,7 @@ namespace SalsaNOWGames.ViewModels
             _steamVdfService = new SteamVdfService();
             _ownedGamesService = new OwnedGamesService(_steamVdfService);
             _headerService = new SteamHeaderService();
+            _shortcutManager = new SteamShortcutManager();
 
             _installedGames = new ObservableCollection<GameInfo>();
             _searchResults = new ObservableCollection<GameInfo>();
@@ -591,19 +593,38 @@ namespace SalsaNOWGames.ViewModels
                     
                     bool needsLoading = appIdsNeedingHeaders.Contains(appId);
                     
+                    // For Salsa installs, verify shortcut actually exists in Steam's shortcuts.vdf
+                    bool hasShortcut = game.HasShortcut;
+                    if (salsaInstalled && hasShortcut)
+                    {
+                        // Verify the shortcut still exists in Steam
+                        bool shortcutVerified = _shortcutManager.VerifyShortcutExists(game.Name);
+                        if (!shortcutVerified)
+                        {
+                            // Shortcut was deleted externally, update our records
+                            hasShortcut = false;
+                            _ownedGamesService.UpdateGameShortcut(appId, false);
+                            _gamesLibraryService.SetHasShortcut(appId, false);
+                            LogService.Log($"Shortcut for {game.Name} no longer exists in Steam, updating status");
+                        }
+                    }
+                    
                     var gameInfo = new GameInfo
                     {
                         AppId = appId,
                         Name = game.Name,
                         HeaderImageUrl = headerUrl,
                         IconUrl = game.IconUrl,
+                        IconPath = game.IconPath,
                         PlaytimeMinutes = game.PlaytimeForeverMinutes,
                         IsInstalled = steamInstalled || salsaInstalled,
                         IsInstalledViaSteam = steamInstalled,
                         IsInstalledViaSalsa = salsaInstalled,
-                        HasShortcut = game.HasShortcut,
+                        HasShortcut = hasShortcut,
                         InstallPath = installPath,
-                        IsLoadingImage = needsLoading && !isCached
+                        IsLoadingImage = needsLoading && !isCached,
+                        // Enable shortcut button for all Salsa installs - eligibility checked on click
+                        CanAddShortcut = salsaInstalled && !hasShortcut
                     };
 
                     // Validate install path exists for Salsa installs
@@ -614,6 +635,7 @@ namespace SalsaNOWGames.ViewModels
                         gameInfo.IsInstalledViaSalsa = false;
                         gameInfo.IsInstalled = steamInstalled;
                         gameInfo.InstallPath = null;
+                        gameInfo.CanAddShortcut = false;
                     }
 
                     // Get size on disk if installed
@@ -859,13 +881,22 @@ namespace SalsaNOWGames.ViewModels
                     ? $"Are you sure you want to uninstall {game.Name}?\n\nThis will open Steam's uninstaller."
                     : $"Are you sure you want to delete {game.Name}?\n\nThis will permanently remove all game files.";
 
-                var result = MessageBox.Show(
-                    message,
-                    "Confirm Delete",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Warning);
+                string secondaryMessage = null;
+                if (!isSteamInstalled && game.HasShortcut)
+                {
+                    secondaryMessage = "The Steam shortcut will also be removed.";
+                }
 
-                if (result == MessageBoxResult.Yes)
+                bool confirmed = ModernDialog.ShowCustom(
+                    Application.Current.MainWindow,
+                    "Confirm Delete",
+                    message,
+                    ModernDialog.DialogType.Warning,
+                    secondaryMessage,
+                    "Delete",
+                    "Cancel");
+
+                if (confirmed)
                 {
                     if (isSteamInstalled)
                     {
@@ -957,33 +988,82 @@ namespace SalsaNOWGames.ViewModels
         {
             StatusMessage = $"Deleting {game.Name}...";
             
+            // Track if game had a shortcut before deletion
+            bool hadShortcut = game.HasShortcut;
+            string gameName = game.Name;
+            
             _depotDownloaderService.DeleteGameAsync(game.AppId, (success) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (success)
                     {
+                        // Remove shortcut if it existed
+                        bool shortcutRemoved = false;
+                        if (hadShortcut)
+                        {
+                            shortcutRemoved = _shortcutManager.RemoveShortcut(gameName);
+                            if (shortcutRemoved)
+                            {
+                                LogService.Log($"Removed Steam shortcut for {gameName}");
+                            }
+                        }
+                        
                         // Mark as uninstalled in salsa.vdf (primary)
                         _ownedGamesService.MarkGameAsUninstalled(game.AppId);
                         
+                        // Clear shortcut and icon path data
+                        _ownedGamesService.UpdateGameShortcut(game.AppId, false);
+                        _ownedGamesService.UpdateGameIconPath(game.AppId, "");
+                        
                         // Also update games.json for backward compatibility
                         _gamesLibraryService.MarkAsUninstalled(game.AppId);
+                        _gamesLibraryService.SetHasShortcut(game.AppId, false);
                         _settingsService.RemoveInstalledGame(game.AppId);
                         
                         // Update the game in the list instead of removing
                         game.IsInstalled = false;
                         game.IsInstalledViaSalsa = false;
+                        game.HasShortcut = false;
+                        game.IconPath = null;
                         game.SizeOnDisk = 0;
+                        game.CanAddShortcut = false;
                         
                         // Also update in search results if present
                         var searchGame = SearchResults.FirstOrDefault(g => g.AppId == game.AppId);
                         if (searchGame != null)
                         {
                             searchGame.IsInstalled = false;
+                            searchGame.HasShortcut = false;
                         }
                         
-                        ShowTemporaryStatus($"{game.Name} has been deleted.");
                         UpdateDriveUsage();
+                        
+                        // If shortcut was removed, prompt to restart Steam
+                        if (shortcutRemoved)
+                        {
+                            bool restartSteam = ModernDialog.ShowCustom(
+                                Application.Current.MainWindow,
+                                "Game Deleted",
+                                $"{gameName} and its Steam shortcut have been removed.\n\nRestart Steam to update your library?",
+                                ModernDialog.DialogType.Confirm,
+                                "Steam will close and reopen automatically.",
+                                "Restart Steam",
+                                "Later");
+                            
+                            if (restartSteam)
+                            {
+                                RestartSteam();
+                            }
+                            else
+                            {
+                                ShowTemporaryStatus($"{gameName} has been deleted.");
+                            }
+                        }
+                        else
+                        {
+                            ShowTemporaryStatus($"{gameName} has been deleted.");
+                        }
                     }
                     else
                     {
@@ -1000,25 +1080,139 @@ namespace SalsaNOWGames.ViewModels
             _statusClearTimer.Start();
         }
 
-        private void CreateShortcut(object parameter)
+        private async void CreateShortcut(object parameter)
         {
             if (parameter is GameInfo game)
             {
                 try
                 {
-                    // TODO: Implement actual shortcut creation to Steam
-                    // For now, just mark as having a shortcut in salsa.vdf (primary)
-                    _ownedGamesService.UpdateGameShortcut(game.AppId, true);
+                    // Check shortcut eligibility to get the exe path
+                    var eligibility = _shortcutManager.CheckShortcutEligibility(game.InstallPath);
                     
-                    // Also update games.json for backward compatibility
-                    _gamesLibraryService.SetHasShortcut(game.AppId, true);
-                    game.HasShortcut = true;
-                    ShowTemporaryStatus($"Shortcut created for {game.Name}");
+                    if (!eligibility.CanAddShortcut)
+                    {
+                        // Show modern error dialog and disable button for this game
+                        ModernDialog.ShowError(
+                            Application.Current.MainWindow,
+                            "Cannot Create Shortcut",
+                            eligibility.ErrorMessage,
+                            "You can add it manually in Steam:\nGames → Add a Non-Steam Game to My Library");
+                        
+                        // Disable the button for this game
+                        game.CanAddShortcut = false;
+                        game.ShortcutErrorMessage = eligibility.ErrorMessage;
+                        return;
+                    }
+
+                    // Check if shortcut already exists
+                    if (_shortcutManager.ShortcutExists(eligibility.ExePath, game.Name))
+                    {
+                        ShowTemporaryStatus($"Shortcut already exists for {game.Name}");
+                        _ownedGamesService.UpdateGameShortcut(game.AppId, true);
+                        _gamesLibraryService.SetHasShortcut(game.AppId, true);
+                        game.HasShortcut = true;
+                        return;
+                    }
+
+                    // Download icon if not already present
+                    string iconPath = game.IconPath;
+                    if (string.IsNullOrEmpty(iconPath) || !File.Exists(iconPath))
+                    {
+                        // Try to download the icon
+                        ShowTemporaryStatus($"Downloading icon for {game.Name}...");
+                        iconPath = await _depotDownloaderService.DownloadGameIconAsync(game.AppId, game.IconUrl);
+                        
+                        if (!string.IsNullOrEmpty(iconPath) && File.Exists(iconPath))
+                        {
+                            game.IconPath = iconPath;
+                            _ownedGamesService.UpdateGameIconPath(game.AppId, iconPath);
+                            LogService.Log($"Downloaded icon for {game.Name}: {iconPath}");
+                        }
+                        else
+                        {
+                            // No icon available, will use exe icon
+                            iconPath = null;
+                            LogService.Log($"No icon available for {game.Name}, will use exe icon");
+                        }
+                    }
+
+                    bool success = _shortcutManager.AddGameShortcut(
+                        game.Name,
+                        eligibility.ExePath,
+                        game.InstallPath,
+                        iconPath);
+
+                    if (success)
+                    {
+                        // Mark as having shortcut in salsa.vdf (primary)
+                        _ownedGamesService.UpdateGameShortcut(game.AppId, true);
+                        
+                        // Also update games.json for backward compatibility
+                        _gamesLibraryService.SetHasShortcut(game.AppId, true);
+                        game.HasShortcut = true;
+
+                        // Ask user if they want to restart Steam
+                        bool restartSteam = ModernDialog.ShowRestartSteam(
+                            Application.Current.MainWindow,
+                            game.Name);
+
+                        if (restartSteam)
+                        {
+                            RestartSteam();
+                        }
+                        else
+                        {
+                            ShowTemporaryStatus($"✓ Shortcut created for {game.Name}");
+                        }
+                    }
+                    else
+                    {
+                        ModernDialog.ShowError(
+                            Application.Current.MainWindow,
+                            "Shortcut Failed",
+                            $"Could not add shortcut for {game.Name}",
+                            "Please try again or add the game manually in Steam.");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    ShowTemporaryStatus($"Failed to create shortcut: {ex.Message}");
+                    LogService.LogError($"Failed to create shortcut for {game.Name}", ex);
+                    ModernDialog.ShowError(
+                        Application.Current.MainWindow,
+                        "Error",
+                        $"Failed to create shortcut: {ex.Message}");
                 }
+            }
+        }
+
+        private void RestartSteam()
+        {
+            try
+            {
+                ShowTemporaryStatus("Restarting Steam...");
+                
+                // Kill Steam process
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "taskkill",
+                    Arguments = "/f /im steam.exe",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                var killProcess = System.Diagnostics.Process.Start(psi);
+                killProcess.WaitForExit(5000);
+
+                // Short delay to ensure Steam closes
+                System.Threading.Thread.Sleep(500);
+
+                // Reopen Steam library
+                System.Diagnostics.Process.Start("steam://open/library");
+                ShowTemporaryStatus("Steam restarted - check your library!");
+            }
+            catch (Exception ex)
+            {
+                LogService.LogError("Failed to restart Steam", ex);
+                ShowTemporaryStatus("Could not restart Steam automatically");
             }
         }
 

@@ -345,8 +345,7 @@
                                                                 Padding="12,8"
                                                                 FontSize="12"
                                                                 Content="🎮"
-                                                                IsEnabled="False"
-                                                                ToolTip="Open Steam Library (coming soon)"
+                                                                ToolTip="Open in Steam Library"
                                                                 Margin="0,0,6,0">
                                                             <Button.Style>
                                                                 <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
@@ -370,12 +369,12 @@
                                                                 Padding="12,8"
                                                                 FontSize="12"
                                                                 Content="🔗"
-                                                                IsEnabled="False"
-                                                                ToolTip="Create Steam Shortcut (coming soon)"
-                                                                Margin="0,0,6,0">
+                                                                Margin="0,0,6,0"
+                                                                IsEnabled="{Binding CanAddShortcut}">
                                                             <Button.Style>
                                                                 <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
                                                                     <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Setter Property="ToolTip" Value="Add as non-Steam game"/>
                                                                     <Style.Triggers>
                                                                         <MultiDataTrigger>
                                                                             <MultiDataTrigger.Conditions>
@@ -384,6 +383,11 @@
                                                                             </MultiDataTrigger.Conditions>
                                                                             <Setter Property="Visibility" Value="Visible"/>
                                                                         </MultiDataTrigger>
+                                                                        <!-- Show error message in tooltip after eligibility check fails -->
+                                                                        <DataTrigger Binding="{Binding CanAddShortcut}" Value="False">
+                                                                            <Setter Property="ToolTip" Value="{Binding ShortcutErrorMessage}"/>
+                                                                            <Setter Property="Opacity" Value="0.5"/>
+                                                                        </DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>
                                                             </Button.Style>

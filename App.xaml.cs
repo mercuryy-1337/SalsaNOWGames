@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using SalsaNOWGames.Services;
+using SalsaNOWGames.Views;
 
 namespace SalsaNOWGames
 {
@@ -28,32 +29,23 @@ namespace SalsaNOWGames
                 
                 if (info != null && !string.IsNullOrEmpty(info.DownloadUrl))
                 {
-                    // Ask user if they want to update
-                    var result = MessageBox.Show(
-                        $"A new version ({info.Version}) is available.\n\nWould you like to update now?",
-                        "Update Available",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Information);
+                    // Ask user if they want to update using modern dialog
+                    bool wantsUpdate = ModernDialog.ShowUpdate(null, info.Version);
 
-                    if (result == MessageBoxResult.Yes)
+                    if (wantsUpdate)
                     {
                         try
                         {
                             // Show downloading message
-                            MessageBox.Show(
-                                "Downloading update... The app will restart automatically.",
-                                "Updating",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Information);
+                            ModernDialog.ShowInfo(null, "Downloading Update", 
+                                "Downloading update...\n\nThe app will restart automatically.",
+                                "Please wait while the update is downloaded.");
 
                             var downloaded = await updateService.DownloadUpdateAsync(info);
                             if (string.IsNullOrEmpty(downloaded))
                             {
-                                MessageBox.Show(
-                                    "Failed to download update. The app will continue with the current version.",
-                                    "Update Failed",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Warning);
+                                ModernDialog.ShowWarning(null, "Update Failed",
+                                    "Failed to download update.\n\nThe app will continue with the current version.");
                                 return;
                             }
 
@@ -67,20 +59,15 @@ namespace SalsaNOWGames
                             }
                             else
                             {
-                                MessageBox.Show(
-                                    "Failed to launch updater. The app will continue with the current version.",
-                                    "Update Failed",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Warning);
+                                ModernDialog.ShowWarning(null, "Update Failed",
+                                    "Failed to launch updater.\n\nThe app will continue with the current version.");
                             }
                         }
                         catch (Exception ex)
                         {
-                            MessageBox.Show(
-                                $"Update failed: {ex.Message}\n\nThe app will continue with the current version.",
-                                "Update Failed",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Warning);
+                            ModernDialog.ShowError(null, "Update Failed",
+                                $"Update failed: {ex.Message}",
+                                "The app will continue with the current version.");
                         }
                     }
                 }

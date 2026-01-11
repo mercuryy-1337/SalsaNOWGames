@@ -5,6 +5,50 @@ All notable changes to SalsaNOW Games will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-11
+
+### Added
+- **Steam Shortcut Integration** - Add Salsa-installed games to Steam as non-Steam games
+  - Click the 🔗 button on any Salsa-installed game to add it to your Steam library
+  - Automatically detects the game executable from the install directory
+  - Downloads game icon and uses it for the Steam shortcut
+  - Shortcut appears in Steam after restarting the Steam client
+  - If multiple executables are found, shows a helpful message to add manually
+- **Steam Restart Integration** - Option to restart Steam after creating a shortcut
+  - After successful shortcut creation, prompted to restart Steam
+  - Click "Restart Steam" to automatically close and reopen Steam
+  - Steam reopens directly to your library
+- **Game Icon Download** - Icons are downloaded when creating shortcuts
+  - Icon downloaded on-demand when clicking the shortcut button
+  - Icon saved to game folder alongside `steam_appid.txt`
+  - Used for Steam shortcut with local file path
+  - Tracked in `salsa.vdf` via new `icon_path` field
+- **Open in Steam Library** - 🎮 button now works for Salsa games with shortcuts
+  - Appears when game has a shortcut (HasShortcut = true)
+  - Opens Steam directly to your game library
+- **Reusable ModernDialog** - New modern themed dialog system for all popups
+  - Supports Info, Success, Warning, Error, Confirm, Update, and RestartSteam types
+  - Dark themed with Steam-like styling to match app design
+- **Shortcut Removal on Delete** - Deleting a Salsa-installed game removes its Steam shortcut
+  - `RemoveShortcut()` method added to `SteamShortcutService`
+  - After deletion, prompts to restart Steam if shortcut was removed
+  - Clears `HasShortcut` and `IconPath` data from salsa.vdf
+
+### Changed
+- `SteamShortcutService` refactored with new APIs for shortcut eligibility checking
+  - Added `VerifyShortcutExists()` method to check if shortcut exists in Steam's shortcuts.vdf
+  - Added `RemoveShortcut()` method to remove shortcuts by game name
+  - Fixed icon path handling - properly uses downloaded icon instead of exe
+- Games now track `CanAddShortcut`, `ShortcutErrorMessage`, and `IconPath` properties
+- the icon path is now stored in salsa.vdf for persistent icon location
+- Replaced all `MessageBox.Show` calls with `ModernDialog` for consistent UI theme
+- Shortcut creation downloads icon on-demand if not already cached
+- Delete confirmation dialog now shows warning about shortcut removal
+- **Shortcut Verification** - App now verifies shortcuts exist in Steam on startup
+  - We check steam's shortcuts.vdf file to confirm shortcuts still exist
+  - Automatically updates `HasShortcut` status if shortcut was deleted externally
+  - Fixes issue where deleting shortcuts manually would leave stale data
+
 ## [1.1.3] - 2026-01-11
 
 ### Added

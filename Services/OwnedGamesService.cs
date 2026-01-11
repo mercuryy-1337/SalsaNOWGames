@@ -46,6 +46,9 @@ namespace SalsaNOWGames.Services
         [DataMember(Name = "icon_url")]
         public string IconUrl { get; set; }
 
+        [DataMember(Name = "icon_path")]
+        public string IconPath { get; set; }
+
         [DataMember(Name = "playtime_forever_minutes")]
         public int PlaytimeForeverMinutes { get; set; }
 
@@ -330,6 +333,7 @@ namespace SalsaNOWGames.Services
                         sb.AppendLine($"\t\t\t\"name\"\t\t\"{EscapeVdfString(game.Name)}\"");
                         sb.AppendLine($"\t\t\t\"header_image_url\"\t\t\"{game.HeaderImageUrl}\"");
                         sb.AppendLine($"\t\t\t\"icon_url\"\t\t\"{game.IconUrl}\"");
+                        sb.AppendLine($"\t\t\t\"icon_path\"\t\t\"{EscapeVdfString(game.IconPath ?? "")}\"");
                         sb.AppendLine($"\t\t\t\"playtime_forever_minutes\"\t\t\"{game.PlaytimeForeverMinutes}\"");
                         sb.AppendLine($"\t\t\t\"install_salsa\"\t\t\"{(game.InstallSalsa ? "1" : "0")}\"");
                         sb.AppendLine($"\t\t\t\"install_steam\"\t\t\"{(game.InstallSteam ? "1" : "0")}\"");
@@ -408,6 +412,7 @@ namespace SalsaNOWGames.Services
                         var nameMatch = Regex.Match(gameBlock, @"""name""\s*""([^""]*)""");
                         var headerMatch = Regex.Match(gameBlock, @"""header_image_url""\s*""([^""]*)""");
                         var iconMatch = Regex.Match(gameBlock, @"""icon_url""\s*""([^""]*)""");
+                        var iconPathMatch = Regex.Match(gameBlock, @"""icon_path""\s*""([^""]*)""");
                         var playtimeMatch = Regex.Match(gameBlock, @"""playtime_forever_minutes""\s*""(\d+)""");
                         var installSalsaMatch = Regex.Match(gameBlock, @"""install_salsa""\s*""([^""]*)""");
                         var installSteamMatch = Regex.Match(gameBlock, @"""install_steam""\s*""([^""]*)""");
@@ -421,6 +426,7 @@ namespace SalsaNOWGames.Services
                             Name = nameMatch.Success ? UnescapeVdfString(nameMatch.Groups[1].Value) : "",
                             HeaderImageUrl = headerMatch.Success ? headerMatch.Groups[1].Value : "",
                             IconUrl = iconMatch.Success ? iconMatch.Groups[1].Value : "",
+                            IconPath = iconPathMatch.Success ? UnescapeVdfString(iconPathMatch.Groups[1].Value) : "",
                             PlaytimeForeverMinutes = playtimeMatch.Success ? int.Parse(playtimeMatch.Groups[1].Value) : 0,
                             InstallSalsa = installSalsaMatch.Success && installSalsaMatch.Groups[1].Value == "1",
                             InstallSteam = installSteamMatch.Success && installSteamMatch.Groups[1].Value == "1",
@@ -529,6 +535,19 @@ namespace SalsaNOWGames.Services
             if (game != null)
             {
                 game.HasShortcut = hasShortcut;
+                SaveToCache(_cachedResponse);
+            }
+        }
+
+        // Update icon_path for a game (local icon file path)
+        public void UpdateGameIconPath(string appId, string iconPath)
+        {
+            if (_cachedResponse?.Games == null) return;
+
+            var game = _cachedResponse.Games.FirstOrDefault(g => g.AppId.ToString() == appId);
+            if (game != null)
+            {
+                game.IconPath = iconPath;
                 SaveToCache(_cachedResponse);
             }
         }

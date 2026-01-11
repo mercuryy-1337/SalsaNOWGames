@@ -1,0 +1,150 @@
+<Window x:Class="SalsaNOWGames.Views.ShortcutDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Steam Shortcut" 
+        Height="Auto" 
+        Width="420"
+        WindowStartupLocation="CenterOwner"
+        Background="#171A21"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        ShowInTaskbar="False"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        BorderBrush="#1A9FFF"
+        BorderThickness="1">
+    
+    <Window.Resources>
+        <!-- Modern Button Style -->
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="Width" Value="140"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="#1A9FFF" 
+                                CornerRadius="4"
+                                BorderThickness="0">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2DB4FF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#1589D6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Width" Value="140"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="#3D4450" 
+                                CornerRadius="4"
+                                BorderThickness="0">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#4D5460"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2D3440"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Icon -->
+        <TextBlock Grid.Row="0" 
+                   x:Name="IconText"
+                   Text="🔗" 
+                   FontSize="48" 
+                   HorizontalAlignment="Center" 
+                   Margin="0,0,0,15"/>
+
+        <!-- Title -->
+        <TextBlock Grid.Row="1" 
+                   x:Name="TitleText"
+                   Text="Shortcut Created" 
+                   FontSize="18" 
+                   FontWeight="Bold" 
+                   Foreground="White" 
+                   HorizontalAlignment="Center"
+                   TextAlignment="Center"
+                   Margin="0,0,0,10"/>
+
+        <!-- Message -->
+        <TextBlock Grid.Row="2" 
+                   x:Name="MessageText"
+                   Text="The shortcut has been added successfully." 
+                   FontSize="12" 
+                   Foreground="#8F98A0" 
+                   TextWrapping="Wrap"
+                   HorizontalAlignment="Center" 
+                   TextAlignment="Center"
+                   Margin="0,0,0,20"/>
+
+        <!-- Secondary Message -->
+        <TextBlock Grid.Row="3" 
+                   x:Name="SecondaryText"
+                   Text="" 
+                   FontSize="11" 
+                   Foreground="#66C0F4" 
+                   TextWrapping="Wrap"
+                   HorizontalAlignment="Center" 
+                   TextAlignment="Center"
+                   Margin="0,0,0,20"
+                   Visibility="Collapsed"/>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="4" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Center" 
+                    Margin="0,10,0,0">
+            
+            <Button x:Name="PrimaryButton" 
+                    Content="OK" 
+                    Style="{StaticResource DialogButton}"
+                    Margin="0,0,15,0"
+                    Click="PrimaryButton_Click"/>
+
+            <Button x:Name="SecondaryButton" 
+                    Content="Cancel" 
+                    Style="{StaticResource SecondaryButton}"
+                    Visibility="Collapsed"
+                    Click="SecondaryButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

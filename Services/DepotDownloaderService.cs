@@ -570,5 +570,58 @@ namespace SalsaNOWGames.Services
                 Process.Start("explorer.exe", gamePath);
             }
         }
+
+        /// <summary>
+        /// Downloads the game icon to the game's install folder.
+        /// Returns the local icon path or null on failure.
+        /// </summary>
+        public async Task<string> DownloadGameIconAsync(string appId, string iconUrl)
+        {
+            if (string.IsNullOrEmpty(iconUrl))
+            {
+                return null;
+            }
+
+            try
+            {
+                string gamePath = GetGameInstallPath(appId);
+                if (!Directory.Exists(gamePath))
+                {
+                    return null;
+                }
+
+                // Determine file extension from URL or default to .jpg
+                string extension = ".jpg";
+                if (iconUrl.Contains(".png"))
+                {
+                    extension = ".png";
+                }
+                else if (iconUrl.Contains(".ico"))
+                {
+                    extension = ".ico";
+                }
+
+                string iconFileName = $"icon{extension}";
+                string iconPath = Path.Combine(gamePath, iconFileName);
+
+                // Download the icon
+                using (var webClient = new System.Net.WebClient())
+                {
+                    await webClient.DownloadFileTaskAsync(new Uri(iconUrl), iconPath);
+                }
+
+                if (File.Exists(iconPath))
+                {
+                    LogService.Log($"Downloaded icon for {appId} to {iconPath}");
+                    return iconPath;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.LogError($"Failed to download icon for {appId}", ex);
+            }
+
+            return null;
+        }
     }
 }
