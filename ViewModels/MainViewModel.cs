@@ -556,18 +556,13 @@ namespace SalsaNOWGames.ViewModels
                 // Use salsa.vdf as primary source - sort alphabetically
                 var sortedGames = ownedGames.Games.OrderBy(g => g.Name).ToList();
                 
-                // Collect app IDs that need header image fetching
+                // Collect app IDs that need header image fetching (either no URL or has slsapi portrait URL)
                 var appIdsNeedingHeaders = sortedGames
                     .Where(g => string.IsNullOrEmpty(g.HeaderImageUrl) || 
-                               !g.HeaderImageUrl.Contains("store_item_assets"))
+                               !g.HeaderImageUrl.Contains("store_item_assets") ||
+                               g.HeaderImageUrl.Contains("library_600x900"))
                     .Select(g => g.AppId.ToString())
                     .ToList();
-                
-                // Fetch header images in background
-                if (appIdsNeedingHeaders.Count > 0)
-                {
-                    _ = FetchHeaderImagesAsync(appIdsNeedingHeaders);
-                }
                 
                 foreach (var game in sortedGames)
                 {
@@ -580,10 +575,21 @@ namespace SalsaNOWGames.ViewModels
                         ? game.InstallPath 
                         : _gamesLibraryService.GetInstallPath(appId);
                     
-                    // Use cached header URL or fallback
-                    string headerUrl = !string.IsNullOrEmpty(game.HeaderImageUrl) 
-                        ? game.HeaderImageUrl 
-                        : SteamHeaderService.GetFallbackHeaderUrl(appId);
+                    // Only use header URL if it's a valid store_item_assets URL (not slsapi portrait)
+                    bool hasValidHeader = !string.IsNullOrEmpty(game.HeaderImageUrl) && 
+                                         game.HeaderImageUrl.Contains("store_item_assets") &&
+                                         !game.HeaderImageUrl.Contains("library_600x900");
+                    
+                    // Check local cache first
+                    string cachedPath = _headerService.GetCachedImagePath(appId);
+                    bool isCached = _headerService.IsImageCached(appId);
+                    
+                    // Use cached local file, valid URL, or nothing (will show loading)
+                    string headerUrl = isCached ? cachedPath 
+                                     : hasValidHeader ? game.HeaderImageUrl 
+                                     : null;
+                    
+                    bool needsLoading = appIdsNeedingHeaders.Contains(appId);
                     
                     var gameInfo = new GameInfo
                     {
@@ -596,7 +602,8 @@ namespace SalsaNOWGames.ViewModels
                         IsInstalledViaSteam = steamInstalled,
                         IsInstalledViaSalsa = salsaInstalled,
                         HasShortcut = game.HasShortcut,
-                        InstallPath = installPath
+                        InstallPath = installPath,
+                        IsLoadingImage = needsLoading && !isCached
                     };
 
                     // Validate install path exists for Salsa installs
@@ -617,6 +624,12 @@ namespace SalsaNOWGames.ViewModels
 
                     InstalledGames.Add(gameInfo);
                 }
+                
+                // Fetch header images in background (after adding all games to list)
+                if (appIdsNeedingHeaders.Count > 0)
+                {
+                    _ = FetchHeaderImagesAsync(appIdsNeedingHeaders);
+                }
             }
 
             UpdateDefaultStatus();
@@ -624,30 +637,69 @@ namespace SalsaNOWGames.ViewModels
             await Task.CompletedTask;
         }
         
-        // Fetches header images (cached or from network) and updates UI + salsa.vdf
+        // Fetches header images (cached or from network), caches locally, and updates UI progressively
         private async Task FetchHeaderImagesAsync(List<string> appIds)
         {
             try
             {
-                LogService.Log($"Fetching header images for {appIds.Count} games...");
-                var headerUrls = await _headerService.GetHeaderUrlsBatchAsync(appIds);
+                LogService.Log($"Fetching and caching header images for {appIds.Count} games...");
+                var headerUrlsToSave = new Dictionary<string, string>();
                 
-                // Batch update salsa.vdf with new header URLs
-                _ownedGamesService.UpdateHeaderImageUrls(headerUrls);
-                
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                // Process in batches of 3 to update UI progressively
+                for (int i = 0; i < appIds.Count; i += 3)
                 {
-                    foreach (var kvp in headerUrls)
+                    var batch = appIds.Skip(i).Take(3).ToList();
+                    var tasks = batch.Select(async appId =>
                     {
-                        var game = InstalledGames.FirstOrDefault(g => g.AppId == kvp.Key);
-                        if (game != null && !string.IsNullOrEmpty(kvp.Value))
+                        // Get the header URL (checks cache first, then CDN, then API)
+                        var url = await _headerService.GetHeaderImageAsync(appId);
+                        
+                        // Download and cache the image locally
+                        string cachedPath = url;
+                        if (!string.IsNullOrEmpty(url) && !url.StartsWith(_headerService.GetCachedImagePath("")))
                         {
-                            game.HeaderImageUrl = kvp.Value;
+                            cachedPath = await _headerService.DownloadAndCacheImageAsync(appId, url);
                         }
+                        
+                        return new { AppId = appId, Url = url, CachedPath = cachedPath };
+                    });
+                    
+                    var results = await Task.WhenAll(tasks);
+                    
+                    // Update UI immediately for this batch
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        foreach (var result in results)
+                        {
+                            var game = InstalledGames.FirstOrDefault(g => g.AppId == result.AppId);
+                            if (game != null)
+                            {
+                                game.HeaderImageUrl = result.CachedPath;
+                                game.IsLoadingImage = false;
+                            }
+                            
+                            // Store URL for saving to salsa.vdf
+                            if (!string.IsNullOrEmpty(result.Url))
+                            {
+                                headerUrlsToSave[result.AppId] = result.Url;
+                            }
+                        }
+                    });
+                    
+                    // Small delay between batches
+                    if (i + 3 < appIds.Count)
+                    {
+                        await Task.Delay(100);
                     }
-                });
+                }
                 
-                LogService.Log($"Header images updated for {headerUrls.Count} games");
+                // Batch update salsa.vdf with URLs (not local paths)
+                if (headerUrlsToSave.Count > 0)
+                {
+                    _ownedGamesService.UpdateHeaderImageUrls(headerUrlsToSave);
+                }
+                
+                LogService.Log($"Header images fetched and cached for {appIds.Count} games");
             }
             catch (Exception ex)
             {
@@ -661,10 +713,18 @@ namespace SalsaNOWGames.ViewModels
             bool salsaInstalled = game.Install?.Salsa ?? false;
             string installPath = _gamesLibraryService.GetInstallPath(game.Id);
             
-            // Use cached header URL or fallback
-            string headerUrl = !string.IsNullOrEmpty(game.HeaderImageUrl) 
-                ? game.HeaderImageUrl 
-                : SteamHeaderService.GetFallbackHeaderUrl(game.Id);
+            // Only use header URL if it's valid (not slsapi portrait)
+            bool hasValidHeader = !string.IsNullOrEmpty(game.HeaderImageUrl) && 
+                                 game.HeaderImageUrl.Contains("store_item_assets") &&
+                                 !game.HeaderImageUrl.Contains("library_600x900");
+            
+            // Check local cache
+            string cachedPath = _headerService.GetCachedImagePath(game.Id);
+            bool isCached = _headerService.IsImageCached(game.Id);
+            
+            string headerUrl = isCached ? cachedPath 
+                             : hasValidHeader ? game.HeaderImageUrl 
+                             : null;
             
             var gameInfo = new GameInfo
             {
@@ -675,7 +735,8 @@ namespace SalsaNOWGames.ViewModels
                 IsInstalled = steamInstalled || salsaInstalled,
                 IsInstalledViaSteam = steamInstalled,
                 IsInstalledViaSalsa = salsaInstalled,
-                HasShortcut = game.HasShortcut
+                HasShortcut = game.HasShortcut,
+                IsLoadingImage = !isCached && !hasValidHeader
             };
 
             if (gameInfo.IsInstalled && !string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))

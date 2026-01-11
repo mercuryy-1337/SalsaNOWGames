@@ -7,21 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.3] - 2026-01-11
 
+### Added
+- **Loading Spinner** - Animated loading indicator while header images are being fetched
+  - Shows spinning circle overlay on game cards while images load
+  - Images appear progressively as they're fetched (3 at a time)
+
 ### Changed
 - **Library View Redesign** - Switched to landscape-oriented game cards
   - Cards now display header images (460x215) instead of portrait library images
   - More compact layout with 3 columns for better space utilization
   - Inline action buttons for cleaner appearance
-- **New Header Image System** - Use steam API with CDN fallback
+- **New Header Image System** - Uses Steam CDN with IStoreBrowseService API fallback
   - CDN-first approach: tries Akamai/Fastly CDN URLs before API calls
   - Validates URLs with HEAD requests (Content-Type: image/*) before using
   - Falls back to IStoreBrowseService API when CDN fails
   - Header images cached locally in `%LOCALAPPDATA%\SalsaNOWGames\cached_library_images\`
   - Rate limited to 3 concurrent downloads to avoid Steam throttling
   - Saves resolved header URLs back to salsa.vdf for faster startup
+  - Never uses invalid portrait images from slsapi (library_600x900)
 - **Centralized Header Service** - New `SteamHeaderService` handles all header image fetching
   - Used consistently across Library, Search, and Download views
   - Batch fetching for better performance on large libraries
+  - Progressive UI updates as each batch completes
 - Download view now displays header images instead of library portraits
 
 ### Removed

@@ -20,6 +20,7 @@ namespace SalsaNOWGames.Models
         private bool _isInstalledViaSteam;
         private bool _isInstalledViaSalsa;
         private bool _hasShortcut;
+        private bool _isLoadingImage;
 
         public string AppId
         {
@@ -131,6 +132,12 @@ namespace SalsaNOWGames.Models
         {
             get => _hasShortcut;
             set { _hasShortcut = value; OnPropertyChanged(); }
+        }
+
+        public bool IsLoadingImage
+        {
+            get => _isLoadingImage;
+            set { _isLoadingImage = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

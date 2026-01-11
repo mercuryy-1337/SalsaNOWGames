@@ -16,6 +16,26 @@
         <converters:BoolOrToVisibilityConverter x:Key="BoolOrToVisibility"/>
         <converters:InverseBoolConverter x:Key="InverseBool"/>
         
+        <!-- Loading Spinner Animation -->
+        <Style x:Key="LoadingSpinner" TargetType="Border">
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <RotateTransform Angle="0"/>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard>
+                        <Storyboard RepeatBehavior="Forever">
+                            <DoubleAnimation Storyboard.TargetProperty="(RenderTransform).(RotateTransform.Angle)"
+                                           From="0" To="360" Duration="0:0:1"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </Style.Triggers>
+        </Style>
+        
         <!-- Game Card Style -->
         <Style x:Key="GameCard" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CardBrush}"/>
@@ -260,9 +280,29 @@
                                             </Grid.RowDefinitions>
                                             
                                             <!-- Game Image (header landscape) -->
-                                            <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True">
-                                                <Image Source="{Binding HeaderImageUrl}" 
-                                                       Stretch="UniformToFill"/>
+                                            <Border Grid.Row="0" CornerRadius="8,8,0,0" ClipToBounds="True"
+                                                    Background="{StaticResource SecondaryBrush}">
+                                                <Grid>
+                                                    <!-- Actual image (hidden when loading) -->
+                                                    <Image Source="{Binding HeaderImageUrl}" 
+                                                           Stretch="UniformToFill"
+                                                           Visibility="{Binding IsLoadingImage, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}"/>
+                                                    
+                                                    <!-- Loading indicator -->
+                                                    <Grid Visibility="{Binding IsLoadingImage, Converter={StaticResource BoolToVisibility}}">
+                                                        <Border Style="{StaticResource LoadingSpinner}" 
+                                                                Width="32" Height="32"
+                                                                BorderThickness="3" 
+                                                                BorderBrush="{StaticResource AccentBrush}"
+                                                                CornerRadius="16"
+                                                                Opacity="0.3"/>
+                                                        <Border Style="{StaticResource LoadingSpinner}" 
+                                                                Width="32" Height="32"
+                                                                BorderThickness="3,3,0,0" 
+                                                                BorderBrush="{StaticResource AccentBrush}"
+                                                                CornerRadius="16"/>
+                                                    </Grid>
+                                                </Grid>
                                             </Border>
                                             
                                             <!-- Game Info -->
