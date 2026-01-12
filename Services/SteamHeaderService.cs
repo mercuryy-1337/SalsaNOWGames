@@ -106,7 +106,6 @@ namespace SalsaNOWGames.Services
         /// </summary>
         public async Task<string> DownloadAndCacheImageAsync(string appId, string imageUrl)
         {
-            LogService.Log($"Downloading header image for {appId} from {imageUrl}...");
             await _fetchSemaphore.WaitAsync();
             try
             {

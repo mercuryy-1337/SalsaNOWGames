@@ -583,33 +583,55 @@
                                Foreground="{StaticResource TextBrush}"
                                Margin="0,0,0,15"/>
                     
-                    <!-- Session Status -->
-                    <Border Grid.Row="1" 
-                            Background="{StaticResource PrimaryBrush}" 
-                            CornerRadius="8" 
-                            Padding="15"
-                            Margin="0,0,0,20"
-                            MaxWidth="600"
-                            HorizontalAlignment="Left">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="✓ " 
-                                           FontSize="14" 
-                                           Foreground="{StaticResource SuccessBrush}"/>
-                                <TextBlock Text="Logged in as " 
-                                           FontSize="14" 
-                                           Foreground="{StaticResource TextBrush}"/>
-                                <TextBlock Text="{Binding DisplayName}" 
-                                           FontSize="14" 
-                                           FontWeight="SemiBold"
-                                           Foreground="{StaticResource AccentBrush}"/>
+                    <!-- Session Status and Info -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                        <!-- Logged In Status -->
+                        <Border Background="{StaticResource PrimaryBrush}" 
+                                CornerRadius="8" 
+                                Padding="15">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="✓ " 
+                                               FontSize="14" 
+                                               Foreground="{StaticResource SuccessBrush}"/>
+                                    <TextBlock Text="Logged in as " 
+                                               FontSize="14" 
+                                               Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="{Binding DisplayName}" 
+                                               FontSize="14" 
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentBrush}"/>
+                                </StackPanel>
+                                <TextBlock Text="Search for games to download them" 
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Margin="18,5,0,0"/>
                             </StackPanel>
-                            <TextBlock Text="Search for games to download them" 
-                                       FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       Margin="18,5,0,0"/>
-                        </StackPanel>
-                    </Border>
+                        </Border>
+                        
+                        <!-- Download Info Note -->
+                        <Border Background="{StaticResource CardBrush}" 
+                                CornerRadius="8" 
+                                Padding="15"
+                                Margin="15,0,0,0"
+                                BorderBrush="{StaticResource AccentBrush}"
+                                BorderThickness="1">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="💡 " 
+                                               FontSize="14"/>
+                                    <TextBlock Text="Download Tip" 
+                                               FontSize="14" 
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentBrush}"/>
+                                </StackPanel>
+                                <TextBlock Text="Downloads may appear stuck but are still running.&#x0a;The percentage updates in chunks, not in real-time." 
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Margin="22,5,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                     
                     <!-- Download Progress & Output -->
                     <Grid Grid.Row="2">

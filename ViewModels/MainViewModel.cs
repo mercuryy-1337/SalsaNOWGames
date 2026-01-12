@@ -168,6 +168,17 @@ namespace SalsaNOWGames.ViewModels
                 {
                     IsDownloading = false;
                     StatusMessage = message;
+                    
+                    // Log download result
+                    if (success)
+                    {
+                        LogService.Log($"Download completed successfully for {SelectedGame?.Name ?? "unknown"}");
+                    }
+                    else
+                    {
+                        LogService.LogError($"Download failed for {SelectedGame?.Name ?? "unknown"}: {message}");
+                    }
+                    
                     if (success && SelectedGame != null)
                     {
                         // Get install path
@@ -876,6 +887,9 @@ namespace SalsaNOWGames.ViewModels
             DownloadOutput = "";
             CurrentView = "download";
             StatusMessage = $"Downloading {game.Name}...";
+            
+            // Log download start
+            LogService.Log($"Starting download for {game.Name} (AppID: {game.AppId})");
 
             try
             {
