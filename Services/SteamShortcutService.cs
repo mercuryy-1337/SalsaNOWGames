@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SalsaNOWGames.Services
 {
@@ -96,6 +97,22 @@ namespace SalsaNOWGames.Services
 
             if (exeFiles.Length > 1)
             {
+                // If there are multiple executables, try to ignore known crash-handler binaries.
+                // If exactly one candidate remains, auto-select it.
+                // If multiple remain, keep the existing multiple-exe error.
+                var ignoreRegex = new Regex(@"^(crs-.*|.*UnityCrashHandler.*)\.exe$", RegexOptions.IgnoreCase);
+                var filtered = exeFiles
+                    .Where(f => !ignoreRegex.IsMatch(Path.GetFileName(f)))
+                    .ToArray();
+
+                if (filtered.Length == 1)
+                {
+                    result.CanAddShortcut = true;
+                    result.ExePath = filtered[0];
+                    result.ErrorMessage = null;
+                    return result;
+                }
+
                 result.ErrorMessage = $"Multiple executables found ({exeFiles.Length}). Please add shortcut manually in Steam.";
                 return result;
             }
